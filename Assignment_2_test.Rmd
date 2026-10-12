@@ -146,6 +146,7 @@ x_labels <- c('2022/23', '2023/24', '2024/25', '2025/26', '2026/27')
 
 ```
 
+
 ```{r}
 # sum of {CBD rates, UAGC, General Rates, Water Rates, Stormwater, Firefighting capacity, Roading, Wastewater, Earthquake, Kerbside, Forestry, Roading Resilience, Trade Waste} = total
 # AND sum of {CBD, CBDA, CBD, ESC, ESF, ESR, GC1, GCS, GFA10, GFA3, GFA4, GFA5, GR1, GRA1, GRA2, GRA5, GRS, KS, MAW, MAWD, MAWR, RDA, RDAS, RDB, RDBS, RDF, RRC, RRF, RRR, SD, SDO, SDOS, SMO, SMOH, SRWV1, SRWV2, UAGC, WC, WCM, WFC, WS, WSH, WSRE, WWS, FE, TWCOD, TWFlow, TWTSS, TWWWTP} = total. 
@@ -226,7 +227,6 @@ G0_data %>%
 
 ```
 
-
 #Graph 1: rates by category
 
 ```{r graph 1, fig.width=15, fig.height=7}
@@ -234,23 +234,31 @@ G0_data %>%
 Column <- Rates %>%
   filter(rate_yr == '26_27') %>% #avoid double counting
   group_by(Category) %>%
-  summarise(Count = n()) %>%
+  summarise(Count = n(),
+            totals = sum(`total rates`)) %>%
   # mutate(Category = factor(Category, levels = c('Specialist', 'Farming', 'Commercial', 'Residential'))) %>%
-  ggplot(aes(x=Count, y = Category, fill= Category)) +
+  ggplot(aes(x= totals, y = Category, fill= Category)) +
   geom_col() +
+  geom_text(aes(label = paste0(scales::comma(Count))), hjust = -0.1, size = 5) +
   #scales
   scale_fill_manual(values = whanganui_palette) +
-  scale_x_continuous(expand = expansion(mult = c(0, 0.1))) + #stop the clipping off of the x axis values
+  scale_x_continuous(
+    labels = scales::label_number(scale_cut = scales::cut_short_scale()),
+    expand = expansion(mult = c(0, 0.15))
+  ) +
+  # scale_x_continuous(expand = expansion(mult = c(0, 0.1))) + #stop the clipping off of the x axis values
   #labels
   labs(title = 'Rateable units by category',
-       subtitle = '88.4% of ratable units are residential',
+       subtitle = '88.4% of ratable units are residential,\nmaking total rates paid higher due to category size.',
        y = '', 
-       x = 'Ratable units') +
+       x = '$ millions') +
   #theme
   theme_minimal() +
   theme(plot.title = element_text(size = 20),
-        plot.subtitle = element_text(size = 12),
-        axis.text.y = element_text(size = 12),
+        plot.subtitle = element_text(size = 15),
+        axis.text.y = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.text.x = element_text(size = 15),
         legend.position = 'none',
         panel.grid.major.y = element_blank()) 
 
@@ -271,10 +279,12 @@ Box <- Rates %>%
   #theme
   theme_minimal() +
   theme(plot.title = element_text(size = 20),
-        plot.subtitle = element_text(size = 12),
+        plot.subtitle = element_text(size = 15),
         legend.position = 'none',
         panel.grid.major.y = element_blank(),
-        axis.text.y = element_blank())
+        axis.title.x = element_text(size = 15),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(size = 15))
 
 #===== patchwork the two together =====#
 (Column | Box) +
