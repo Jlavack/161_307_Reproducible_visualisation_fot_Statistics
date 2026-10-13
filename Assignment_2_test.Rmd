@@ -391,26 +391,37 @@ Residential rates change the most in terms of median % change.
 
 
 # Graph 3 - Map
-Within the residential rates category, the highest rates are paid in the Otamatea suburb. This has been the case year on year since at least 2022. 
+For the year 2026/27, within the residential rates category, the highest median rates are paid in the Otamatea suburb (\$5,213.6), but the least total rates (\$3,090,701). Otamatea has the highest valued houses, but the fewest houses (593), this is why. Gonville, on the other hand pays the most total rates (\$12,198,414), but one of the lowest medians rates ($3928,71). Gonville has the most houses (2916) of any suburb. 
+
+```{r}
+graph_3_data
+```
+
+
+
 
 ```{r graph 4 map, fig.width=15, fig.height=8}
-#===== map code =====
+#===== Wrangling =====
 graph_3_data <- Rates %>% 
   filter(year == 2026, Category == 'Residential') %>%
   group_by(suburb) %>%
   summarise(median_rates = median(`total rates`),
-            count = n(), 
+            count = n(),
+            total = sum(`total rates`),
             .groups = 'drop')
 
+map_data <- whanganui %>%
+  left_join(graph_3_data, by = c('sa3_name' = "suburb")) %>%
+  mutate(sa3_name = recode(sa3_name, 
+                           "Otamatea (Whanganui District)" = "Otamatea"))
+
+#===== Median rates map =====#
 #this is separate because the labels wants to be out of the bounding box window
 rural_count <- graph_3_data %>%
   filter(suburb == 'Whanganui District Rural') %>%
   pull(count)
 
-suburb_map <- whanganui %>%
-  left_join(graph_3_data, by = c('sa3_name' = 'suburb')) %>%
-  mutate(sa3_name = recode(sa3_name, 
-                           "Otamatea (Whanganui District)" = "Otamatea")) %>%
+median_map <- map_data %>%
   ggplot() +
   geom_sf(mapping=aes(fill = median_rates), col = 'white', linewidth = 1, alpha = 0.5) +
   coord_sf(xlim = w_bbox$x, ylim = w_bbox$y) + #need to change the rural district label to be visible
@@ -422,23 +433,61 @@ suburb_map <- whanganui %>%
            size = 3, fill = 'white') + #play with this to get the position right
   #Scale arguments
   scale_fill_gradientn(colors = c("#008242", "#FEC30E", "#AD1619"),
-                       limits = c(min(graph_3_data$median_rates), max(graph_3_data$median_rates))) +
+                       limits = c(min(graph_3_data$median_rates), max(graph_3_data$median_rates)),
+                       name = 'Median rates') +
   #Labels
-  labs(title = 'Rates by suburb in year 2026/27',
+  labs(title = 'Median rates',
        subtitle = '',
        x = '',
        y = '') +
   #Theme
   theme_minimal() +
-  theme(legend.position = 'none',
-        axis.ticks.y = element_blank(),
+  theme(axis.ticks.y = element_blank(),
         axis.ticks.x = element_blank(),
         axis.text.y = element_blank(),
         axis.text.x = element_blank(),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
 
-#===== heatmap code =====
+#===== total rates map =====#
+total_map <- map_data %>%
+  ggplot() +
+  geom_sf(mapping=aes(fill = total), col = 'white', linewidth = 1, alpha = 0.5) +
+  coord_sf(xlim = w_bbox$x, ylim = w_bbox$y) + #need to change the rural district label to be visible
+  #annotation
+  geom_sf_label(mapping = aes(label = paste0(sa3_name, "\nn= ",as.character(count))), 
+               size = 3) + 
+  annotate("label", x = 1777000, y = 5584000,
+           label = paste0("Rural\nn=", rural_count), 
+           size = 3, fill = 'white') + #play with this to get the position right
+  #Scale arguments
+  scale_fill_gradientn(colors = c("#008242", "#FEC30E", "#AD1619"),
+                       limits = c(min(graph_3_data$total), max(graph_3_data$total)),
+                       name = 'Total rates') +
+  #Labels
+  labs(title = 'Total rates',
+       subtitle = '',
+       x = '',
+       y = '') +
+  #Theme
+  theme_minimal() +
+  theme(axis.ticks.y = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+#patchwork the plot together.
+(median_map | total_map) +
+  plot_annotation(title = 'Residential rates in year 2026/27.',
+                  subtitle = 'Otamatea has the highest residential rates, Gonville pays the most rates in total.',
+                  theme = theme(plot.title = element_text(size = 30),
+                                plot.subtitle = element_text(size = 20)))
+```
+
+```{r}
+#===== heatmap code =====#
 heatmap_data <- Rates %>% 
   filter(Category == 'Residential') %>%
   select(`total rates`, suburb, year) %>%
@@ -464,10 +513,13 @@ suburb_heatmap <- heatmap_data %>%
   theme_minimal()
 
 #patchwork the plot together.
-(suburb_map | suburb_heatmap) +
+(median_map | total_map) +
   plot_annotation(title = 'Median residential rates can vary more than $1,000 by suburb',
-                  subtitle = 'Otamatea has the highest residential rates in Whanganui, despite having the fewest rateable units')
+                  subtitle = 'Otamatea has the highest residential rates in Whanganui, despite having the fewest rateable units',
+                  theme = theme(plot.title = element_text(size = 30),
+                                plot.subtitle = element_text(size = 20)))
 ```
+
 
 #Who pays the most?
 
@@ -596,6 +648,7 @@ Rates %>%
 #     y = '') +
 #   theme_lawa() 
 ```
+
 ```{r}
 Rates %>%  
   mutate(SUIP_grp = case_when(
