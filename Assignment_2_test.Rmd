@@ -228,6 +228,21 @@ G0_data %>%
 ```
 
 #Graph 1: rates by category
+Residential rate payers as a group pay the highest amount of rates, \$80,892,140$ in total. 
+However, the median rates for residential payers is \$4,003.52, compared to \$7,344.46 of commercial rate payers. 
+Specialist rate payers pay the least at \$2,297.72, while Farming rate payers pay a median of \$3,403.05. 
+Residential rate payers rates vary the least between the interquartile range.
+So, while they vary less and pay less in general, because they are the largest category, they pay the most rates. Despite the commerical category paying higher per rating unit. 
+
+# ```{r}
+# Rates %>%
+#   filter(rate_yr == '26_27') %>% #avoid double counting
+#   group_by(Category) %>%
+#   summarise(Count = n(),
+#             totals = sum(`total rates`),
+#             ms = median(`total rates`))
+```
+
 
 ```{r graph 1, fig.width=15, fig.height=7}
 #===== Column chart =====#
@@ -239,7 +254,7 @@ Column <- Rates %>%
   # mutate(Category = factor(Category, levels = c('Specialist', 'Farming', 'Commercial', 'Residential'))) %>%
   ggplot(aes(x= totals, y = Category, fill= Category)) +
   geom_col() +
-  geom_text(aes(label = paste0(scales::comma(Count))), hjust = -0.1, size = 5) +
+  geom_text(aes(label = paste0("n= ",scales::comma(Count))), hjust = -0.1, size = 5) +
   #scales
   scale_fill_manual(values = whanganui_palette) +
   scale_x_continuous(
@@ -248,8 +263,8 @@ Column <- Rates %>%
   ) +
   # scale_x_continuous(expand = expansion(mult = c(0, 0.1))) + #stop the clipping off of the x axis values
   #labels
-  labs(title = 'Rateable units by category',
-       subtitle = '88.4% of ratable units are residential,\nmaking total rates paid higher due to category size.',
+  labs(title = "Residential rate payers pay the most rates\ncombined",
+       subtitle = "88.4% of ratable units are residential.",
        y = '', 
        x = '$ millions') +
   #theme
@@ -263,17 +278,30 @@ Column <- Rates %>%
         panel.grid.major.y = element_blank()) 
 
 #===== box chart =====#
+max_row <- Rates %>%
+  filter(rate_yr == '26_27') %>%
+  slice_max(`total rates`, n = 1)
+
 Box <- Rates %>%
   filter(rate_yr == '26_27') %>% #avoid double counting
+  filter(!(`total rates` == max_row$`total rates`)) %>% #remove the max row
   # mutate(Category = factor(Category, levels = c('Specialist', 'Farming', 'Commercial', 'Residential'))) %>%
   ggplot(aes(x=log(`total rates`), y = Category, col= Category)) +
   geom_point(position = position_jitterdodge(jitter.width = 1), alpha = 0.3, size = 1) +
   geom_boxplot(col = 'black', fill = NA, outlier.shape = NA, size = 0.7) +
+  #annotation specific code. The max rates unit
+  geom_point(data = max_row,
+             aes(x = log(`total rates`), y = Category),
+             colour = "#FEC30E", size = 3, inherit.aes = FALSE) +
+  annotate("point",
+           x = log(max_row$`total rates`),
+           y = max_row$Category,
+           size = 8, colour = "red", shape = 1) +
   #scales
   scale_color_manual(values = whanganui_palette) +
   #labels
-  labs(title = 'Rates distribution by category',
-       subtitle = 'Residential rates varied the least compared to other categories',
+  labs(title = "The highest individual rates are commerical.",
+       subtitle = "property 72940 paid $1,013,421 in rates.",
        y = '', 
        x = 'Log of total rates') +
   #theme
