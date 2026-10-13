@@ -13,7 +13,6 @@ library(ggdist)
 library(maps)    
 library(sf)  
 library(patchwork)
-
 ```
 
 ```{r read in data, message = FALSE}
@@ -232,9 +231,9 @@ Residential rate payers as a group pay the highest amount of rates, \$80,892,140
 However, the median rates for residential payers is \$4,003.52, compared to \$7,344.46 of commercial rate payers. 
 Specialist rate payers pay the least at \$2,297.72, while Farming rate payers pay a median of \$3,403.05. 
 Residential rate payers rates vary the least between the interquartile range.
-So, while they vary less and pay less in general, because they are the largest category, they pay the most rates. Despite the commerical category paying higher per rating unit. 
+So, while they vary less and pay less in general, because they are the largest category, they pay the most rates. Despite the commercial category paying higher per rating unit. 
 
-# ```{r}
+```{r}
 # Rates %>%
 #   filter(rate_yr == '26_27') %>% #avoid double counting
 #   group_by(Category) %>%
@@ -390,31 +389,9 @@ cumulative_chart <- cumulative_data %>%
 
 Residential rates change the most in terms of median % change. 
 
-#Graph 3: SUIP Residential
-do new builds have higher rates? No, it doens't appear so. 
-
-```{r}
-year_built <- Rates %>% 
-  group_by(property_no) %>%
-  summarise(Count= n()) %>% 
-  mutate(Year_built = case_when(
-    Count == 1 ~ 2025,
-    Count == 2 ~ 2024, 
-    Count == 3 ~ 2023, 
-    Count == 4 ~ 2022,
-    TRUE ~ 2021
-  )) %>% select(-Count)
-
-Rates %>% left_join(year_built, by = 'property_no') %>%
-  group_by(Year_built) %>%
-  summarise(mr = median(`total rates`))
-  
-```
-
-
-
 
 # Graph 3 - Map
+Within the residential rates category, the highest rates are paid in the Otamatea suburb. This has been the case year on year since at least 2022. 
 
 ```{r graph 4 map, fig.width=15, fig.height=8}
 #===== map code =====
@@ -425,21 +402,33 @@ graph_3_data <- Rates %>%
             count = n(), 
             .groups = 'drop')
 
+#this is separate because the labels wants to be out of the bounding box window
+rural_count <- graph_3_data %>%
+  filter(suburb == 'Whanganui District Rural') %>%
+  pull(count)
+
 suburb_map <- whanganui %>%
   left_join(graph_3_data, by = c('sa3_name' = 'suburb')) %>%
+  mutate(sa3_name = recode(sa3_name, 
+                           "Otamatea (Whanganui District)" = "Otamatea")) %>%
   ggplot() +
   geom_sf(mapping=aes(fill = median_rates), col = 'white', linewidth = 1, alpha = 0.5) +
   coord_sf(xlim = w_bbox$x, ylim = w_bbox$y) + #need to change the rural district label to be visible
-  geom_sf_label(mapping=aes(label=sa3_name), size=3) +
-  geom_sf_text(mapping = aes(label = as.character(count)), size = 2.5, vjust = 3) + #count of ratable units
+  #annotation
+  geom_sf_label(mapping = aes(label = paste0(sa3_name, "\nn= ",as.character(count))), 
+               size = 3) + 
   annotate("label", x = 1777000, y = 5584000,
-           label = "Whanganui District Rural", size = 3, fill = 'white') + #play with this to get the piosition right
+           label = paste0("Rural\nn=", rural_count), 
+           size = 3, fill = 'white') + #play with this to get the position right
+  #Scale arguments
   scale_fill_gradientn(colors = c("#008242", "#FEC30E", "#AD1619"),
                        limits = c(min(graph_3_data$median_rates), max(graph_3_data$median_rates))) +
+  #Labels
   labs(title = 'Rates by suburb in year 2026/27',
        subtitle = '',
        x = '',
        y = '') +
+  #Theme
   theme_minimal() +
   theme(legend.position = 'none',
         axis.ticks.y = element_blank(),
@@ -461,13 +450,17 @@ suburb_heatmap <- heatmap_data %>%
   ggplot(aes(y = suburb, x = year, fill = median_rates)) +
   geom_tile() +
   geom_text(aes(label = round(median_rates,0)), size = 3.5, na.rm = TRUE) +
+  #scale arguments
   scale_fill_gradientn(colors = c("#008242", "#FEC30E", "#AD1619"),
+                       name = "Median rates",
                      limits = c(min(heatmap_data$median_rates), max(heatmap_data$median_rates))) +
   scale_x_continuous(breaks = c(2022, 2023, 2024, 2025, 2026),, labels = x_labels) +
+  #labels
   labs(title = 'Median Rates by Suburb from 2022/23 to 2026/27',
        subtitle = '',
        x = '',
        y = '') +
+  #Theme
   theme_minimal()
 
 #patchwork the plot together.
