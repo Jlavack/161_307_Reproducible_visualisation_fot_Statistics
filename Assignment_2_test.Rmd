@@ -393,13 +393,6 @@ Residential rates change the most in terms of median % change.
 # Graph 3 - Map
 For the year 2026/27, within the residential rates category, the highest median rates are paid in the Otamatea suburb (\$5,213.6), but the least total rates (\$3,090,701). Otamatea has the highest valued houses, but the fewest houses (593), this is why. Gonville, on the other hand pays the most total rates (\$12,198,414), but one of the lowest medians rates ($3928,71). Gonville has the most houses (2916) of any suburb. 
 
-```{r}
-graph_3_data
-```
-
-
-
-
 ```{r graph 4 map, fig.width=15, fig.height=8}
 #===== Wrangling =====
 graph_3_data <- Rates %>% 
@@ -522,39 +515,43 @@ suburb_heatmap <- heatmap_data %>%
 
 
 #Who pays the most?
+So, who pays the most in residential rates? Proportionally, it is Otamatea rates payers. Their payments are larger than other rates payers not just in value, but also relative to all rates payers. Proportionally, the median is around 0.006 from 2023 onwards Even if they pay less as a combined group. St John's hill comes in second at 0.0059. Rural rate payers pay the least, at 0.0042. 
 
-```{r}
-# Total of rates paid is most in gonville
-total_rates <- sum(Rates$`total rates`)
-
-Rates %>% 
-  filter(Category == "Residential") %>%
-  group_by(year, suburb) %>%
-  summarise(total_rates_paid = sum(`total rates`),
-            units = n(),
-            .groups = "drop") %>%
-  mutate(prop_rates = total_rates_paid / sum(total_rates_paid),
-         average_rates = total_rates_paid / units) %>%
-  arrange(desc(year), desc(prop_rates))
-
-#per house, the proportional rates are hghest in omatea
+```{r graph 4, fig.width=15, fig.height=8}
 Rates %>% 
   filter(Category == "Residential") %>%
   group_by(year) %>%
   mutate(prop = 100 * `total rates` / sum(`total rates`)) %>%
   ungroup() %>%
   group_by(year, suburb) %>%
-  summarise(mean_prop = mean(prop), 
-            sum_prop = sum(prop),
-            .groups = "drop") %>%
-  arrange(year, desc(mean_prop))
-
-
-
-timeseries_data %>% 
-  left_join(Rates %>% select(property_no, suburb), by = "property_no") %>%
-  group_by(year, suburb) %>%
-  summarise(total_rates_paid = sum(`total rates`))
+  reframe(median_qi(prop, .width = c(.25, .50, .80, .95))) %>%
+  mutate(suburb = recode(suburb, 
+                         "Otamatea (Whanganui District)" = "Otamatea",
+                         "Whanganui District Rural" = "Rural")) %>%
+  ggplot(aes(x = year, y = y, ymin = ymin, ymax = ymax)) +
+  geom_lineribbon(color = "#DC0100", alpha = 0.5, linewidth = 0.7) +
+  geom_vline(aes(xintercept = 2023), linetype ='dashed') + 
+  facet_wrap(~ suburb, ncol = 5) +
+  #scale arguments
+  scale_fill_manual(values = c("#C7E9F3", "#92B8D8", "#5C88BD","#2757A2"),
+                    name = "Quantiles") +
+  scale_x_continuous(labels = function(x) x %% 100) +
+  #labels
+  labs(title = "Otamatea rate payers pay proportionally the most rates,",
+       subtitle = "In 2023/24 when the 2022 the QV price adjustment was applied, proportional rates became more constant ",
+       x = "Year",
+       y = "Proportion of rates paid per unit") +
+  #themes
+  theme_minimal() +
+  theme(legend.position = 'top',
+        strip.text = element_text(face = "bold", size = 15),
+        plot.title = element_text(size = 20),
+        plot.subtitle = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.text.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text.y = element_text(size = 15)
+        )
 ```
 
 
@@ -649,21 +646,7 @@ Rates %>%
 #   theme_lawa() 
 ```
 
-```{r}
-Rates %>%  
-  mutate(SUIP_grp = case_when(
-    is.na(SUIP) ~ 'Unknown',
-    SUIP == 0 ~ '0',
-    SUIP == 1 ~ '1',
-    SUIP == 2 ~ '2', 
-    SUIP %in% c(3,4,5) ~ '3 - 5',
-    SUIP %in% c(6,7,8,9,10) ~ '6 - 10',
-    SUIP >10 ~ '11+',
-    TRUE ~ as.character(SUIP)
-  )) %>%
-  group_by(SUIP_grp) %>%
-  summarise(count = n())
-```
+
 
 =============================================================================
 
