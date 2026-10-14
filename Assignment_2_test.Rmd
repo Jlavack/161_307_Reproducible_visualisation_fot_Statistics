@@ -149,17 +149,19 @@ theme_report <- function(base_size = 15) {
     theme(
       # Titles
       plot.title = element_text(size = 20, face = "bold", hjust = 0),
-      plot.subtitle = element_text(size = 15, hjust = 0,
+      plot.subtitle = element_text(size = 18, hjust = 0,
                                    margin = margin(b = 5)),
       # Axes
-      axis.title = element_text(size = 15),
+      axis.title = element_text(size = 18),
       axis.text = element_text(size = 15),
       # Facet strips
       strip.text = element_text(face = "bold", size = 15),
       # Legend
       legend.position = "top",
       legend.title = element_text(size = 15),
-      legend.text = element_text(size = 15)
+      legend.text = element_text(size = 15),
+      # Caption
+      plot.caption = element_text(size =15)
     )
 }
 
@@ -425,11 +427,7 @@ Residential rates change the most in terms of median % change.
 
 # Graph 3 - Map
 For the year 2026/27, within the residential rates category, the highest median rates are paid in the Otamatea suburb (\$5,213.6), but the least total rates (\$3,090,701). Otamatea has the highest valued houses, but the fewest houses (593), this is why. Gonville, on the other hand pays the most total rates (\$12,198,414), but one of the lowest medians rates ($3928,71). Gonville has the most houses (2916) of any suburb. 
-
-```{r}
-
-
-```
+We can see that price is not a funciton of units in a suburb. fewer houses does not = higher price 
 
 
 ```{r graph 4 map, fig.width=15, fig.height=8}
@@ -527,7 +525,7 @@ suburb_heatmap <- heatmap_data %>%
 
 
 #Who pays the most?
-So, who pays the most in residential rates? Proportionally, it is Otamatea rates payers. Their payments are larger than other rates payers not just in value, but also relative to all rates payers. Proportionally, the median is around 0.006 from 2023 onwards Even if they pay less as a combined group. St John's hill comes in second at 0.0059. Rural rate payers pay the least, at 0.0042. 
+So, who pays the most in residential rates? Proportionally, it is Otamatea rates payers. Their payments are larger than other rates payers not just in value, but also relative to all rates payers. Proportionally, the median is around 0.006 from 2023 onwards Even if they pay less as a combined group. St John's hill comes in second at 0.0059. Rural rate payers pay the least, at 0.0042. Note the quantile intervals. Central has the highest rateable units as outliers, while Otamatea has a few low valued outliers. There is overlap in each suburb with each other suburb. In general, the observation holds. Higher median rate paying suburbs pay more than their "fair" share. Obviously, "fair" here is a construct. Rates are not even, they are based off of QV value and SUIPs. 
 
 
 ```{r graph 4, fig.width=15, fig.height=8}
@@ -582,21 +580,11 @@ graph_4_data %>%
   labs(title = "Otamatea rate payers pay proportionally the most rates",
        subtitle = "The four more expensive suburbs pay proportionally more rates than cheaper ones.",
        x = "Year",
-       y = "Proportion of rates paid per unit") +
+       y = "Proportion of rates paid per unit",
+       caption = "Black dotted line is the proportion if every house paid the same share towards rates.") +
   #themes
-  theme_minimal() +
-  theme(legend.position = "top",
-        legend.text = element_text(size = 15),
-        legend.title = element_text(size = 15),
-        strip.text = element_text(face = "bold", size = 15),
-        plot.title = element_text(size = 20),
-        plot.subtitle = element_text(size = 15),
-        axis.title.x = element_text(size = 15),
-        axis.text.x = element_text(size = 15),
-        axis.title.y = element_text(size = 15),
-        axis.text.y = element_text(size = 15))
+  theme_report() 
 ```
-
 
 
 #Graph 4 - rain clouds by SUIP
@@ -608,14 +596,8 @@ Are the rich contributing? Look at total rates paid by residential suburb
 Maybe look at the stat half eye by subrub actual rates?
 what about the SUIPs.
 
-
-```{r, fig.height=10, fig.width=10}
-# for one graph I will show, with the density eye plot the categorical density of rates by qv category. As they vary heaps
-# lots of categories, maybe too many. I'll try mapping them ot the Data res/com/faarm ones ot get a clearer graph
-widths = c(0.5, 0.8, 0.95)
-
-#identify outliers by category, then also plot them on the graph., Use a simple IQR method
-
+only 779 units have 3+ SUIPs
+```{r}
 Rates %>% 
   filter(Category == 'Residential', !is.na(SUIP)) %>%
   mutate(SUIP_grp = case_when(
@@ -623,24 +605,54 @@ Rates %>%
     SUIP == 1 ~ '1',
     SUIP == 2 ~ '2', 
     SUIP %in% c(3,4,5) ~ '3 - 5',
-    SUIP %in% c(6,7,8,9,10) ~ '6 - 10',
-    SUIP >10 ~ '11+'
+    # SUIP %in% c(6,7,8,9,10) ~ '6 - 10',
+    SUIP >5 ~ '6+'
+    )) %>%
+  group_by(SUIP_grp) %>%
+  summarise(n = n())
+```
+
+
+```{r, fig.height=8, fig.width=10}
+# for one graph I will show, with the density eye plot the categorical density of rates by qv category. As they vary heaps
+# lots of categories, maybe too many. I'll try mapping them ot the Data res/com/faarm ones ot get a clearer graph
+widths = c(0.5, 0.8, 0.95)
+
+#identify outliers by category, then also plot them on the graph., Use a simple IQR method
+
+graph_5_data <- Rates %>% 
+  filter(Category == 'Residential', !is.na(SUIP), year == 2026) %>%
+  arrange(SUIP) %>%
+  mutate(SUIP_grp = case_when(
+    SUIP == 0 ~ '0 ',
+    SUIP == 1 ~ '1 ',
+    SUIP == 2 ~ '2 ', 
+    SUIP >= 3 ~ '3+'
     ),
-    SUIP_grp = factor(SUIP_grp, levels = c('0', '1', '2', '3 - 5', '6 - 10', '11+'))) %>%
-  # mutate(outlier = `total rates` < quantile(`total rates`, 0.25) - 1.5 * IQR(`total rates`) |
-  #          `total rates` > quantile(`total rates`, 0.75) + 1.5 * IQR(`total rates`)) %>%
-  # filter(!outlier) %>%
+    SUIP_grp = factor(SUIP_grp, levels = rev(c('0 ', '1 ', '2 ', '3+')))) %>%
+  mutate(
+    fct_grp = case_when(
+      SUIP_grp == "3+" ~ 2,
+      TRUE ~ 1
+    )
+  ) %>%
+  group_by(SUIP_grp) %>%
+  mutate(title = paste0(trimws(as.character(SUIP_grp)),
+                        " (n = ", n(), ")")) %>%
+  ungroup()
+
+median_SUIP <- graph_5_data %>% summarise(median(`total rates`)) %>% pull()
+
+graph_5_data %>%
   ggplot(aes(x = `total rates`, y = SUIP_grp, fill = SUIP_grp)) +
-  # stat_interval(
-  #   mapping = aes(fill_ramp = after_stat(level)),
-  #   .width = widths) +
   stat_halfeye(
     mapping = aes(fill_ramp = after_stat(level)),
     fill_type = "segments",
     .width = widths,
+    adjust = 3, 
     alpha = 0.5,
     show.legend = FALSE,
-    col = 'black',
+    col = 'grey33',
   ) +
   stat_dotsinterval(
     mapping = aes(fill_ramp = after_stat(level)),
@@ -651,47 +663,35 @@ Rates %>%
     slab_linewidth = NA,
     show.legend = FALSE,
     quantiles = 100) +
-
-  # stat_summary(geom = "point", fun = median, col = 'black', position = position_nudge(y = -0.05)) +
+  geom_vline(aes(xintercept = median_SUIP), col = "black", linetype = "dashed") +
+  facet_wrap(~ fct_grp, nrow = 2, scales = "free") +
+  #scales
+  scale_fill_manual(values = whanganui_palette) +
   scale_fill_ramp_discrete(na.translate = FALSE) +
-  theme_minimal() 
-  # scale_color_manual(values = c("#FEC30E","#6190F7", "#69A241"), aesthetics = 'slab_fill')
+  scale_y_discrete(
+  labels = set_names( #get the order for the title back
+    graph_5_data %>% distinct(SUIP_grp, title) %>% pull(title),
+    graph_5_data %>% distinct(SUIP_grp, title) %>% pull(SUIP_grp)
+  )) +
+  #labels
+  labs(
+    title = "More SUIPs means more rates.",
+    subtitle = "Most residential units have one SUIP, set exactly at the median rate value (dashed line).",
+    y = "",
+    x = "Total rates per unit",
+    caption = "3+ SUIPs have many more outliers, and have been split to a separate set of axes."
+  ) +
+  #theme
+  theme_report() +
+  theme(strip.text = element_blank(),
+        axis.text.y = element_text(hjust = 1))
 
-#copied code from assignment 1
-# # +
-#   geom_vline(xintercept = mean_value, col = 'black', lty = 'dashed') +
-#   #add an annotation over hte y axis ot indicate the number of sites
-#   annotate("text", 
-#            x = 0, # Position x near the counts (right side)
-#            y = y_levels[5], # Position y at the top-most category level
-#            label = "(Sites, Samples)", 
-#            size = 3, 
-#            hjust = 1.2, # Left align the header with the counts
-#            vjust = -3, # Push it up above the label
-#            family = "mono") +
-#   #group mean annotation
-#   annotate("text", 
-#            x = 2, # Position x near the counts (right side)
-#            y = y_levels[5], # Position y at the top-most category level
-#            label = paste0('pooled mean = ', round(mean_value, 2)), 
-#            size = 3, 
-#            hjust = -0.1, # keep it to the right of the mean line
-#            vjust = -7, # Push it up over the geom
-#            family = "mono") +
-#   scale_y_discrete(labels = label_lookup) + #applying the custom labels 
-#   #colors go outside in
-#   scale_color_manual(values = c("#f9e4c4","#79b9e7", "#4277af")) + 
-#   scale_x_continuous(breaks= seq(0, max(plot_data$`Clarity (BDISC)`), by = 1)) +
-#   coord_cartesian(xlim = c(0, 12), clip = "off") +
-#   labs(
-#     title = 'Is oversampling bias making rivers less clear?',
-#     subtitle = 'No, but increased activity around rivers does',
-#     caption = "Pasture land and urban areas have mean water clarity below the pooled mean, despite high or low sample sites \n while native forests are above it. There appears to be no trend in altitude. \n Sampled sites are all between Wellington and Palmerston in NZ",
-#     x = 'Water clarity (Meters of depth visibility)', 
-#     y = '') +
-#   theme_lawa() 
+
 ```
 
+```{r}
+unique(Rates$`qv category`)
+```
 
 
 =============================================================================
