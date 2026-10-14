@@ -426,8 +426,38 @@ Residential rates change the most in terms of median % change.
 # Graph 3 - Map
 For the year 2026/27, within the residential rates category, the highest median rates are paid in the Otamatea suburb (\$5,213.6), but the least total rates (\$3,090,701). Otamatea has the highest valued houses, but the fewest houses (593), this is why. Gonville, on the other hand pays the most total rates (\$12,198,414), but one of the lowest medians rates ($3928,71). Gonville has the most houses (2916) of any suburb. 
 
+```{r}
+
+
+```
+
+
 ```{r graph 4 map, fig.width=15, fig.height=8}
-#===== Wrangling =====
+#===== Map Graph function =====#
+map_graph <- function(data, fill, title) {
+data %>%
+  ggplot() +
+  geom_sf(mapping=aes(fill = .data[[fill]]), col = 'white', linewidth = 1, alpha = 0.5) +
+  coord_sf(xlim = w_bbox$x, ylim = w_bbox$y) + #need to change the rural district label to be visible
+  #annotation
+  geom_sf_label(mapping = aes(label = paste0(sa3_name, "\nn= ",as.character(count))), 
+               size = 3) + 
+  annotate("label", x = 1777000, y = 5584000,
+           label = paste0("Rural\nn=", rural_count), 
+           size = 3, fill = 'white') + #play with this to get the position right
+  #Scale arguments
+  scale_fill_gradientn(colors = c("#008242", "#FEC30E", "#AD1619"),
+                       limits = range(data[[fill]]),
+                       name = title) +
+  #Labels
+  labs(title = title,
+       subtitle = '',
+       x = '',
+       y = '') +
+  #Theme
+  theme_map()
+}
+#===== Wrangling =====#
 graph_3_data <- Rates %>% 
   filter(year == 2026, Category == 'Residential') %>%
   group_by(suburb) %>%
@@ -441,56 +471,17 @@ map_data <- whanganui %>%
   mutate(sa3_name = recode(sa3_name, 
                            "Otamatea (Whanganui District)" = "Otamatea"))
 
-#===== Median rates map =====#
+#get count of units in suburb for labels
 #this is separate because the labels wants to be out of the bounding box window
 rural_count <- graph_3_data %>%
   filter(suburb == 'Whanganui District Rural') %>%
   pull(count)
 
-median_map <- map_data %>%
-  ggplot() +
-  geom_sf(mapping=aes(fill = median_rates), col = 'white', linewidth = 1, alpha = 0.5) +
-  coord_sf(xlim = w_bbox$x, ylim = w_bbox$y) + #need to change the rural district label to be visible
-  #annotation
-  geom_sf_label(mapping = aes(label = paste0(sa3_name, "\nn= ",as.character(count))), 
-               size = 3) + 
-  annotate("label", x = 1777000, y = 5584000,
-           label = paste0("Rural\nn=", rural_count), 
-           size = 3, fill = 'white') + #play with this to get the position right
-  #Scale arguments
-  scale_fill_gradientn(colors = c("#008242", "#FEC30E", "#AD1619"),
-                       limits = c(min(graph_3_data$median_rates), max(graph_3_data$median_rates)),
-                       name = 'Median rates') +
-  #Labels
-  labs(title = 'Median rates',
-       subtitle = '',
-       x = '',
-       y = '') +
-  #Theme
-  theme_map()
+#===== Median rates map =====#
+median_map <- map_graph(map_data, "median_rates", 'Median rates')
 
 #===== total rates map =====#
-total_map <- map_data %>%
-  ggplot() +
-  geom_sf(mapping=aes(fill = total), col = 'white', linewidth = 1, alpha = 0.5) +
-  coord_sf(xlim = w_bbox$x, ylim = w_bbox$y) + #need to change the rural district label to be visible
-  #annotation
-  geom_sf_label(mapping = aes(label = paste0(sa3_name, "\nn= ",as.character(count))), 
-               size = 3) + 
-  annotate("label", x = 1777000, y = 5584000,
-           label = paste0("Rural\nn=", rural_count), 
-           size = 3, fill = 'white') + #play with this to get the position right
-  #Scale arguments
-  scale_fill_gradientn(colors = c("#008242", "#FEC30E", "#AD1619"),
-                       limits = c(min(graph_3_data$total), max(graph_3_data$total)),
-                       name = 'Total rates') +
-  #Labels
-  labs(title = 'Total rates',
-       subtitle = '',
-       x = '',
-       y = '') +
-  #Theme
-  theme_map() 
+total_map <- map_graph(map_data, "total", 'Total rates')
 
 #patchwork the plot together.
 (median_map | total_map) +
