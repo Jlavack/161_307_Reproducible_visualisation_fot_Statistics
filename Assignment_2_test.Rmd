@@ -19,6 +19,9 @@ font_families()
 showtext_auto()
 ```
 
+
+move suburb and sa3name recoding up here
+
 ```{r read in data, message = FALSE}
 #data in Draft Rates by property 26.27 - statistical purposes 1 in two sheets. Data and Unit Rates
 
@@ -43,7 +46,12 @@ ta_nz <- nz %>%
   group_by(territorial_authority, regional_council) %>%
   summarise(geometry = st_union(GEOMETRY), .groups = 'drop')
 
-whanganui <- nz %>% filter(territorial_authority == "Whanganui District")
+whanganui <- nz %>% filter(territorial_authority == "Whanganui District") %>%
+  mutate(sa3_name = recode(sa3_name,
+                           "Otamatea (Whanganui District)" = "Otamatea",
+                           "Whanganui District Rural" = "Rural",
+                           "Bastia-Durie Hill-Putiki" = "Bastia-Durie"))
+
 bbox <- st_bbox(whanganui)
 
 w_bbox <- list(x = c(1767500, 1779000), y=c(5574000, 5585000))
@@ -122,7 +130,11 @@ Rates <- wdc_rates %>%
   )) %>%
   mutate(Category = factor(Category, 
                            levels = c('Specialist', 'Farming', 'Commercial', 'Residential'))) %>% #for consistent color coding
-  select(-suburb_new) 
+  select(-suburb_new) %>%
+  mutate(suburb = recode(suburb, 
+                         "Otamatea (Whanganui District)" = "Otamatea",
+                         "Whanganui District Rural" = "Rural",
+                         "Bastia-Durie Hill-Putiki" = "Bastia-Durie"))
 #===== Data wrangling finish =====
 
 #===== Colour palette setup =====
@@ -225,6 +237,10 @@ Rain cloud for ggdits.
 use line ribon for year on year variation
 
 # Graph 0: rates over time vs RBNZ inflation
+
+Residential rates change the most in terms of median % change. 
+Do I need this graph? Can I drop it?
+
 ```{r graph 0, fig.width = 10, fig.height=5}
 #RBNZ data I just copied from their website. Didn't seem like worth all the effort to download the full dataset.Rate yaers frun from start july to end June (source: my ever increasing rates bill :( )
 #NZ financial year is from start march to end april, so I need to get the NZ rates year quarter inflation values to map the rates to inflation correctly
@@ -248,7 +264,7 @@ G0_data <- timeseries_data %>%
   group_by(Category, year) %>%
   summarise(mean_pct_change = mean(pct_change), .groups = 'drop') 
 
-G0_data %>%
+CPI_rate <- G0_data %>%
   ggplot(aes(y = mean_pct_change, x = year, col = Category)) +
   geom_line() +
   geom_point(size = 2,show.legend = FALSE) +
@@ -260,7 +276,7 @@ G0_data %>%
                                   round(max(G0_data$mean_pct_change),0)),
                       breaks = scales::breaks_width(10)) +
   scale_color_manual(values = c(
-    setNames(whanganui_palette[1:4], c('Specialist', 'Farming', 'Commercial', 'Residential')),
+    setNames(whanganui_palette(4), c('Specialist', 'Farming', 'Commercial', 'Residential')),
     "RBNZ Inflation Rate" = "#ed1166"),
     name= "Legend") +
   #labels
@@ -274,6 +290,44 @@ G0_data %>%
   theme_minimal() +
   theme(legend.position = 'top',
         panel.grid.minor.x = element_blank())
+
+#===== Cumulative percent change =====#
+cumulative_data <- timeseries_data %>%
+  group_by(year, Category) %>%
+  summarise(pct_change = mean(pct_change), .groups = 'drop') %>%
+  group_by(Category) %>%
+  arrange(year) %>% #should be arranged already... paranoid
+  mutate(cum_chg = cumsum(pct_change))
+
+avg_cum_perc <- cumulative_data %>% group_by(year) %>% summarise(avg = mean(cum_chg))
+
+cumulative_chart <- cumulative_data %>%
+  ggplot(aes(x = year, col = Category)) +
+  geom_line(aes(y = cum_chg), linewidth = 0.8) +
+  geom_line(data = avg_cum_perc, aes(x = year, y = avg, col = 'Average'),
+            linewidth = 1, linetype = 'dashed') +
+  #scales
+  scale_x_continuous(labels = x_labels) +
+  scale_y_continuous(limits = c(round(min(cumulative_data$cum_chg),0), 
+                                round(max(cumulative_data$cum_chg),0)),
+                    breaks = scales::breaks_width(10)) +
+  scale_color_manual(values = c(
+      setNames(whanganui_palette(4), c('Specialist', 'Farming', 'Commercial', 'Residential')),
+      "Average" = "black")) +
+  #labels
+  labs(
+    title = 'Cumulatively, residential rates have changed the least',
+    subtitle = "Consistently just below the average",
+    x = '',
+    y = 'Percent'
+  ) +
+  #theme
+  theme_minimal() +
+  theme(legend.position = 'none',
+      strip.text = element_text(face = "bold"))
+
+#patchwork output together
+(CPI_rate | cumulative_chart)
 
 ```
 
@@ -361,78 +415,11 @@ Box <- Rates %>%
                   theme = theme(plot.title = element_text(size = 30)))
 ```
 
-#Graph 2: Residential rates change  through time. % change
-
-```{r graphn 2, fig.height=8, fig.width=10}
-#===== ribbon chart =====#
-#redline shows median change
-ribbon_chart <- timeseries_data %>%
-  group_by(year, Category) %>%
-  median_qi(pct_change, .width = c(0.25, 0.5, 0.75, 0.95)) %>%
-  ggplot(aes(x = year, y = pct_change, ymin = .lower, ymax = .upper, color = Category)) +
-  geom_lineribbon(color = "#DC0100", alpha = 0.5, linewidth = 0.7) + #from the vignette https://mjskay.github.io/ggdist/articles/lineribbon.html
-  geom_vline(aes(xintercept = 2023), linetype ='dashed') + 
-  facet_wrap(~ Category, scales = "free_y") +
-  #scales
-  scale_fill_manual(values = c("#C7E9F3", "#92B8D8", "#5C88BD","#2757A2"),
-                    name = 'Quantile') +
-  scale_x_continuous(labels = x_labels) +
-  #labels
-  labs(title = 'Inflation indexed residential rates change year on year',
-     subtitle = 'Rate % change varied the most in the 2023/24 year, when the 2022 QV revaluation was applied.\nResidential rates have varied the least.',
-     y = 'Percentage change', 
-     x = '') +
-  #Theme
-  theme_minimal() +
-  theme(legend.position = 'top',
-        panel.grid.minor.x = element_blank(),
-        strip.text = element_text(face = "bold"))
-
-#===== Cumulative percent change =====#
-cumulative_data <- timeseries_data %>%
-  group_by(year, Category) %>%
-  summarise(pct_change = mean(pct_change), .groups = 'drop') %>%
-  group_by(Category) %>%
-  arrange(year) %>% #should be arranged already... paranoid
-  mutate(cum_chg = cumsum(pct_change))
-
-avg_cum_perc <- cumulative_data %>% group_by(year) %>% summarise(avg = mean(cum_chg))
-
-cumulative_chart <- cumulative_data %>%
-  ggplot(aes(x = year, col = Category)) +
-  geom_line(aes(y = cum_chg), linewidth = 0.8) +
-  geom_line(data = avg_cum_perc, aes(x = year, y = avg, col = 'Average'),
-            linewidth = 1, linetype = 'dashed') +
-  #scales
-  scale_x_continuous(labels = x_labels) +
-  scale_y_continuous(limits = c(round(min(cumulative_data$cum_chg),0), 
-                                round(max(cumulative_data$cum_chg),0)),
-                    breaks = scales::breaks_width(10)) +
-  scale_color_manual(values = c(
-      setNames(whanganui_palette[1:4], c('Specialist', 'Farming', 'Commercial', 'Residential')),
-      "Average" = "black")) +
-  #labels
-  labs(
-    title = 'Cumulatively, residential rates have changed the least',
-    subtitle = "Consistently just below the average",
-    x = '',
-    y = 'Percent'
-  ) +
-  #theme
-  theme_minimal() +
-  theme(legend.position = 'top',
-      strip.text = element_text(face = "bold"))
-
-#patchwork output together
-(ribbon_chart / cumulative_chart)
-  
-  
-```
-
-Residential rates change the most in terms of median % change. 
 
 
-# Graph 3 - Map
+
+
+# Graph 2 - Map
 For the year 2026/27, within the residential rates category, the highest median rates are paid in the Otamatea suburb (\$5,213.6), but the least total rates (\$3,090,701). Otamatea has the highest valued houses, but the fewest houses (593), this is why. Gonville, on the other hand pays the most total rates (\$12,198,414), but one of the lowest medians rates ($3928,71). Gonville has the most houses (2916) of any suburb. 
 We can see that price is not a funciton of units in a suburb. fewer houses does not = higher price 
 
@@ -469,17 +456,19 @@ graph_3_data <- Rates %>%
   summarise(median_rates = median(`total rates`),
             count = n(),
             total = sum(`total rates`),
-            .groups = 'drop')
+            .groups = 'drop') 
+
+w <- whanganui %>%
+    mutate(sa3_name = recode(sa3_name,
+                         "Otamatea (Whanganui District)" = "Otamatea"))
 
 map_data <- whanganui %>%
-  left_join(graph_3_data, by = c('sa3_name' = "suburb")) %>%
-  mutate(sa3_name = recode(sa3_name, 
-                           "Otamatea (Whanganui District)" = "Otamatea"))
+  left_join(graph_3_data, by = c('sa3_name' = "suburb")) 
 
 #get count of units in suburb for labels
 #this is separate because the labels wants to be out of the bounding box window
 rural_count <- graph_3_data %>%
-  filter(suburb == 'Whanganui District Rural') %>%
+  filter(suburb == 'Rural') %>%
   pull(count)
 
 #===== Median rates map =====#
@@ -651,22 +640,16 @@ rain_clouds <- graph_5_data %>%
 ```
 
 ```{r}
-graph_6_data <- graph_5_data %>% group_by(suburb, SUIP_grp) %>% summarise(n = n()) %>%
-    mutate(suburb = recode(suburb,
-                         "Otamatea (Whanganui District)" = "Otamatea",
-                         "Whanganui District Rural" = "Rural",
-                         "Bastia-Durie Hill-Putiki" = "Bastia-Durie"))
+graph_6_data <- graph_5_data %>% group_by(suburb, SUIP_grp) %>% summarise(n = n()) #%>%
 
 heatmap <- graph_6_data %>%
   ggplot(aes(y = suburb, x = SUIP_grp, fill = n)) +
   geom_tile() +
-  # geom_text(aes(label = round(median_rates,0)), size = 3.5, na.rm = TRUE) +
   #scale arguments
   scale_fill_gradientn(colors = whanganui_palette(3),
                        name = "Unit count",
                      limits = c(min(graph_6_data$n), max(graph_6_data$n))
                      ) +
-  # scale_x_continuous(breaks = c(2022, 2023, 2024, 2025, 2026),, labels = x_labels) +
   #labels
   labs(title = 'Rateable units per SUIP by suburb.',
        subtitle = '',
@@ -686,4 +669,64 @@ rain_clouds +
 ```
 
 =============================================================================
+
+So who pays the most?
+Commercial rate payers on a per unit basis, but residential payers as a group. 
+Of the residential payers who pays the most?
+Payers in Otamatea pay higher median rates. Payer in Gonville pay the most as a group. 
+Otamatea rate payers pay the most proportionally compared to the whole, which is not just because they have more expensive houses.
+SUIP makes you pay more, but few have SUIP >= 3. Most are SUIP 1. With the most of these in Gonville. Fewest in Otamatea. 
+
+If you have a home in Otamatea, you will pay more than other people relative to their homes. 
+
+```{r}
+Rates %>%
+  filter(year == 2026) %>%
+  filter(suburb %in% c("Otamatea", "Gonville")) %>%
+  select(suburb, `total rates`, cv, lv) %>%
+  ggplot(aes(x = `total rates`, colour = suburb, y = lv/10000)) +
+  geom_point() +
+  scale_color_manual(values = whanganui_palette())
+```
+
+```{r}
+max_row <- Rates %>%
+  filter(rate_yr == '26_27', Category == "Residential") %>%
+  slice_max(`total rates`, n = 1)
+
+Rates %>%
+  filter(rate_yr == '26_27', Category == "Residential") %>% #avoid double counting
+  filter(!(`total rates` == max_row$`total rates`)) %>% #remove the max row
+  # mutate(Category = factor(Category, levels = c('Specialist', 'Farming', 'Commercial', 'Residential'))) %>%
+  ggplot(aes(x=log(`total rates`), y = suburb, col= suburb)) +
+  geom_point(position = position_jitterdodge(jitter.width = 1), alpha = 0.3, size = 1) +
+  geom_boxplot(col = 'black', fill = NA, outlier.shape = NA, size = 0.7) +
+  #annotation specific code. The max rates unit
+  geom_point(data = max_row,
+             aes(x = log(`total rates`), y = suburb),
+             colour = "#AD1619", size = 3, inherit.aes = FALSE) +
+  annotate("point",
+           x = log(max_row$`total rates`),
+           y = max_row$suburb,
+           size = 8, colour = "black", shape = 1) +
+  #scales
+  scale_color_manual(values = whanganui_palette()) +
+  #labels
+  labs(title = "The highest individual rates are commerical.",
+       subtitle = "property 72940 paid $1,013,421 in rates.",
+       y = '', 
+       x = 'Log of total rates') +
+  #theme
+  theme_report() +
+  theme(legend.position = 'none',
+        panel.grid.major.y = element_blank(),)
+```
+```{r}
+Rates %>%
+  filter(Category == "Residential") %>%
+  group_by(suburb) %>%
+  summarise(m = mean(`total rates`), 
+            mm = max(`total rates`))
+```
+
 
