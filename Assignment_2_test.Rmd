@@ -604,7 +604,7 @@ graph_5_data <- Rates %>%
 
 median_SUIP <- graph_5_data %>% summarise(median(`total rates`)) %>% pull()
 
-graph_5_data %>%
+rain_clouds <- graph_5_data %>%
   ggplot(aes(x = `total rates`, y = SUIP_grp, fill = SUIP_grp)) +
   stat_halfeye(
     mapping = aes(fill_ramp = after_stat(level)),
@@ -651,9 +651,13 @@ graph_5_data %>%
 ```
 
 ```{r}
-graph_6_data <- graph_5_data %>% group_by(suburb, SUIP_grp) %>% summarise(n = n()) 
+graph_6_data <- graph_5_data %>% group_by(suburb, SUIP_grp) %>% summarise(n = n()) %>%
+    mutate(suburb = recode(suburb,
+                         "Otamatea (Whanganui District)" = "Otamatea",
+                         "Whanganui District Rural" = "Rural",
+                         "Bastia-Durie Hill-Putiki" = "Bastia-Durie"))
 
-graph_6_data %>%
+heatmap <- graph_6_data %>%
   ggplot(aes(y = suburb, x = SUIP_grp, fill = n)) +
   geom_tile() +
   # geom_text(aes(label = round(median_rates,0)), size = 3.5, na.rm = TRUE) +
@@ -669,13 +673,17 @@ graph_6_data %>%
        x = '',
        y = '') +
   #Theme
-  theme_report() +
+  theme_minimal() +
   theme(legend.position = 'right')
 
 
 ```
 
 
+```{r, fig.height=8, fig.width=10}
+rain_clouds +
+  inset_element(heatmap, left = 0.5, bottom = 0.6, right = 1, top = 1)
+```
 
 =============================================================================
 
