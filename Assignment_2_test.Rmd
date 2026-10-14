@@ -13,6 +13,10 @@ library(ggdist)
 library(maps)    
 library(sf)  
 library(patchwork)
+library(showtext)
+font_add_google("Inter", "Inter")
+font_families()
+showtext_auto()
 ```
 
 ```{r read in data, message = FALSE}
@@ -139,11 +143,49 @@ whanganui_palette <- c( #from inspecting the page elements of the Whanganui webs
 
 # font is Inter sans-serif
 
+#===== Custom theme =====#
+theme_report <- function(base_size = 15) {
+  theme_minimal(base_size = base_size, base_family = "Inter") +
+    theme(
+      # Titles
+      plot.title = element_text(size = 20, face = "bold", hjust = 0),
+      plot.subtitle = element_text(size = 15, hjust = 0,
+                                   margin = margin(b = 5)),
+      # Axes
+      axis.title = element_text(size = 15),
+      axis.text = element_text(size = 15),
+      # Facet strips
+      strip.text = element_text(face = "bold", size = 15),
+      # Legend
+      legend.position = "top",
+      legend.title = element_text(size = 15),
+      legend.text = element_text(size = 15)
+    )
+}
+
+theme_map <- function(base_size = 15) {
+  theme_minimal(base_size = base_size, base_family = "Inter") +
+    theme(
+      # panels
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      # Titles
+      plot.title = element_text(size = 20, face = "bold", hjust = 0),
+      plot.subtitle = element_text(size = 15, hjust = 0),
+      # Axes
+      axis.title =  element_blank(),
+      axis.text =  element_blank(),
+      # Legend
+      legend.title = element_text(size = 15),
+      legend.text = element_text(size = 15)
+    )
+}
 
 #===== additional config =====
 x_labels <- c('2022/23', '2023/24', '2024/25', '2025/26', '2026/27')
 
 ```
+
 
 
 ```{r}
@@ -267,13 +309,8 @@ Column <- Rates %>%
        y = '', 
        x = '$ millions') +
   #theme
-  theme_minimal() +
-  theme(plot.title = element_text(size = 20),
-        plot.subtitle = element_text(size = 15),
-        axis.text.y = element_text(size = 15),
-        axis.title.x = element_text(size = 15),
-        axis.text.x = element_text(size = 15),
-        legend.position = 'none',
+  theme_report() +
+  theme(legend.position = 'none',
         panel.grid.major.y = element_blank()) 
 
 #===== box chart =====#
@@ -304,14 +341,10 @@ Box <- Rates %>%
        y = '', 
        x = 'Log of total rates') +
   #theme
-  theme_minimal() +
-  theme(plot.title = element_text(size = 20),
-        plot.subtitle = element_text(size = 15),
-        legend.position = 'none',
+  theme_report() +
+  theme(legend.position = 'none',
         panel.grid.major.y = element_blank(),
-        axis.title.x = element_text(size = 15),
-        axis.text.y = element_blank(),
-        axis.text.x = element_text(size = 15))
+        axis.text.y = element_blank())
 
 #===== patchwork the two together =====#
 (Column | Box) +
@@ -434,13 +467,7 @@ median_map <- map_data %>%
        x = '',
        y = '') +
   #Theme
-  theme_minimal() +
-  theme(axis.ticks.y = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.text.y = element_blank(),
-        axis.text.x = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank())
+  theme_map()
 
 #===== total rates map =====#
 total_map <- map_data %>%
@@ -463,13 +490,7 @@ total_map <- map_data %>%
        x = '',
        y = '') +
   #Theme
-  theme_minimal() +
-  theme(axis.ticks.y = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.text.y = element_blank(),
-        axis.text.x = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank())
+  theme_map() 
 
 #patchwork the plot together.
 (median_map | total_map) +
@@ -520,20 +541,19 @@ So, who pays the most in residential rates? Proportionally, it is Otamatea rates
 
 ```{r graph 4, fig.width=15, fig.height=8}
 #==== Wrangling ====#
-#calculate equal prop if all houses paid same rates.
+#residential
 residential <- Rates %>%
   filter(Category == "Residential") %>%
   mutate(suburb = recode(suburb,
                          "Otamatea (Whanganui District)" = "Otamatea",
                          "Whanganui District Rural" = "Rural",
                          "Bastia-Durie Hill-Putiki" = "Bastia-Durie"))
-
+#proportion
 equal_prop <- residential %>%
   group_by(year) %>%
   summarise(prop = 100 / n(), .groups = "drop") %>%
   tidyr::crossing(suburb = unique(residential$suburb))
 
-#create the data for the grapoh
 prop_data <- residential %>%
   group_by(year) %>%
   mutate(prop = 100 * `total rates` / sum(`total rates`)) %>%
@@ -541,40 +561,40 @@ prop_data <- residential %>%
   group_by(year, suburb) %>%
   reframe(median_qi(prop, .width = c(.25, .50, .80, .95)))
 
-#rank the suburbs
-suburb_rank <- prop_data %>% 
+#ranking suburbs
+suburb_rank <- prop_data %>%
   filter(year == 2026, .width == 0.50) %>%
   mutate(rank = rank(-y, ties.method = "min")) %>%
   arrange(rank)
 
-#make final dataset
+#final data
 graph_4_data <- prop_data %>%
   left_join(suburb_rank %>% select(suburb, rank), by = "suburb") %>%
-  mutate(suburb_ranked = factor(paste0(suburb, ", rank ", rank),
-                                levels = paste0(suburb_rank$suburb,
-                                                ", rank ",
-                                                suburb_rank$rank)))
-#===== graph =====#
+  mutate(suburb_ranked = factor(
+    paste0(suburb, ", rank ", rank),
+    levels = paste0(suburb_rank$suburb, ", rank ", suburb_rank$rank)
+  ))
+
+#==== Graph ====#
 graph_4_data %>%
   ggplot(aes(x = year, y = y)) +
-  geom_lineribbon(aes(ymin = ymin, ymax = ymax), color = "#DC0100", alpha = 0.5, linewidth = 1) +
-  #proportion if everyone paid the same
+  geom_lineribbon(aes(ymin = ymin, ymax = ymax),
+                  color = "#DC0100", alpha = 0.5, linewidth = 1) +
   geom_line(data = equal_prop, aes(x = year, y = prop),
-            col = "black", linetype = "dashed", size = 1) +
-  #facet
+            col = "black", linetype = "dashed", linewidth = 1) +
   facet_wrap(~ suburb_ranked, ncol = 5) +
   #scale arguments
+  scale_x_continuous(labels = function(x) x %% 100) +
   scale_fill_manual(values = c("#C7E9F3", "#92B8D8", "#5C88BD","#2757A2"),
                     name = "Quantiles") +
-  scale_x_continuous(labels = function(x) x %% 100) +
   #labels
-  labs(title = "Otamatea rate payers pay proportionally the most rates,",
-       subtitle = "The four more expensive suburbs pay proprotionally more rates than cheaper ones.",
+  labs(title = "Otamatea rate payers pay proportionally the most rates",
+       subtitle = "The four more expensive suburbs pay proportionally more rates than cheaper ones.",
        x = "Year",
        y = "Proportion of rates paid per unit") +
   #themes
   theme_minimal() +
-  theme(legend.position = 'top',
+  theme(legend.position = "top",
         legend.text = element_text(size = 15),
         legend.title = element_text(size = 15),
         strip.text = element_text(face = "bold", size = 15),
@@ -583,8 +603,7 @@ graph_4_data %>%
         axis.title.x = element_text(size = 15),
         axis.text.x = element_text(size = 15),
         axis.title.y = element_text(size = 15),
-        axis.text.y = element_text(size = 15)
-        )
+        axis.text.y = element_text(size = 15))
 ```
 
 
