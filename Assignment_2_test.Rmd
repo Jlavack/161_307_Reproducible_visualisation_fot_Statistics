@@ -150,7 +150,8 @@ whanganui_palette <- function(n = 13, which = NULL) {
   "#93735B",
   "#372502",
   "#687928",
-  "#FEEAD7")
+  "#FEEAD7",
+  "black")
   
   if (!is.null(which)) {
     pal[which]
@@ -865,5 +866,65 @@ ggraph(g, layout = "fr") +
 
 Try a dendro gram. Show the street clusters. 
 
+```{r}
+library(ggdendro)
+
+# Aggregate to street level: median rate per street
+street_rates <- street_data %>%
+  group_by(suburb, street) %>%
+  summarise(median_rate = median(`total rates`), n = n(), .groups = "drop") %>%
+  filter(n >= 3)
+
+# Hierarchical clustering on median rate
+dend <- hclust(
+  dist(street_rates$median_rate),
+  method = "ward.D2"
+)
+
+# Plot
+ggdendro::ggdendrogram(dend) +
+  theme_minimal() +
+  labs(x = "Street", y = "Distance",
+       title = "Street-level rate clustering",
+       subtitle = "Tight clusters = streets with similar median rates")
+```
+
+```{r}
+library(factoextra)
+
+fviz_dend(
+  hclust(dist(street_rates$median_rate), method = "ward.D2"),
+  k = n_distinct(street_rates$suburb),  # one cluster per suburb
+  cex = 0.6,
+  rect = TRUE,
+  labels_rot = 90,
+  main = "Street rate clustering"
+) +
+  scale_color_manual(values = whanganui_palette(11),
+                     name = "Cluster")
+```
+
+```{r}
+# Normalise rate, then add suburb as a categorical distance
+library(vegan)
+
+# Binary matrix: one row per street, columns = suburbs (1 if that suburb)
+suburb_mat <- model.matrix(~ 0 + suburb, data = street_rates)
+
+# Combine rate distance + suburb distance
+d_rate   <- dist(street_rates$median_rate)
+d_suburb <- vegan::vegdist(suburb_mat, method = "jaccard")
+
+# Weighted combination (tune the weight)
+d_combined <- 0.7 * d_rate + 0.3 * d_suburb
+
+dend <- hclust(d_combined, method = "ward.D2")
+
+fviz_dend(dend, k = n_distinct(street_rates$suburb),
+          cex = 0.6, rect = TRUE, labels_rot = 90,
+          main = "Street clustering (rate + suburb)") +
+  scale_color_manual(values = whanganui_palette(11),
+                     name = "Cluster")
+```
 
 
