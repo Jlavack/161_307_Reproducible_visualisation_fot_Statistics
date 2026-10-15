@@ -679,20 +679,27 @@ look by area
 ```{r, fig.width=10, fig.height=8}
 #===== Wrangling =====#
 residential_area <- Rates %>% 
-  filter(Category == "Residential", !is.na(`rate area (ha)`))
+  filter(Category == "Residential", !is.na(`rate area (ha)`)) %>%
+  mutate(rate_per_m = `rate area (ha)` * 10000)
 
-Rates_per_ha <- residential_area %>% 
+Rates_per_meter <- residential_area %>% 
   summarise(total_rates = sum(`total rates`), 
-            total_area = sum(`rate area (ha)`),
+            total_area = sum(rate_per_m),
             rate_per_ha = total_rates / total_area) %>%
   pull()
 
+area_rank <- residential_area %>% 
+  group_by(suburb) %>%
+  summarise(median = round(median(`rate area (ha)` * 10000), 0)) %>%
+  mutate(rank = rank(-median, ties.method = "min")) %>%   
+  arrange(rank)    
+
 graph_6_data <- residential_area %>%
-  mutate(rates_per_ha = `total rates` / `rate area (ha)`) %>%
+  mutate(rates_per_area = `total rates` / rate_per_m) %>%
   group_by(suburb, year) %>%
-  reframe(median_qi(rates_per_ha, .width = c(.25, .50, .80, .95)))
-
-
+  reframe(median_qi(rates_per_area, .width = c(.25, .50, .80, .95))) %>%
+  mutate(suburb = factor(suburb, levels = area_rank$suburb))
+  
 
 #===== Graph =====#
 graph_6_data %>%
@@ -701,9 +708,14 @@ graph_6_data %>%
                   color = "#DC0100", alpha = 0.5, linewidth = 1) +
   # geom_line(data = Rates_per_ha_suburb, aes(x = year, y = median_per_ha),
   #           col = "black", linetype = "dashed", linewidth = 1) +
-  geom_hline(aes(yintercept = Rates_per_ha), col = "black",
+  geom_hline(aes(yintercept = Rates_per_meter), col = "black",
              linetype = 'dashed') +
-  facet_wrap(~ suburb, ncol = 5) +
+  facet_wrap(~ suburb, ncol = 5,
+             labeller = function(labels) {
+               s <- as.character(labels$suburb)
+               med <- area_rank$median[match(s, as.character(area_rank$suburb))]
+               list(suburb = paste0(s, "\nmedian area = ", med))
+             }) +  
   #scale arguments
   scale_x_continuous(labels = function(x) x %% 100) +
   scale_y_continuous(labels = scales::label_number(accuracy = 1)) +
@@ -713,8 +725,8 @@ graph_6_data %>%
   labs(title = "Otamatea rate payers pay proportionally the most rates",
        subtitle = "The four more expensive suburbs pay proportionally more rates than cheaper ones.",
        x = "Year",
-       y = "Proportion of rates paid per unit",
-       caption = "Black dotted line is the proportion if every house paid the same share towards rates.") +
+       y = "Rates per m² (NZD)",
+       caption = "Black dotted line is the average rates per meter squared across all Whanganui.") +
   #themes
   theme_report() 
 
