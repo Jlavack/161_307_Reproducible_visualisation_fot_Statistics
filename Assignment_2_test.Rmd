@@ -148,9 +148,9 @@ whanganui_palette <- function(n = 13) {
   "#C7E9F3",
   "#004925",
   "#D4582A",
-  "#372502",
   "#8B514E",
-  "#93735B", 
+  "#93735B",
+  "#372502",
   "#687928",
   "#FEEAD7")
   if (n <= length(pal)) {
@@ -412,7 +412,7 @@ Box <- Rates %>%
 #===== patchwork the two together =====#
 (Column | Box) +
   plot_annotation(title = "Rates by Category in year rating 2026/27",
-                  theme = theme(plot.title = element_text(size = 30)))
+                  theme = theme(plot.title = element_text(size = 30, family = "Inter")))
 ```
 
 
@@ -601,7 +601,7 @@ rain_clouds <- graph_5_data %>%
     .width = widths,
     adjust = 3, 
     alpha = 0.5,
-    show.legend = FALSE,
+    # show.legend = FALSE,
     col = 'grey33',
   ) +
   stat_dotsinterval(
@@ -616,8 +616,9 @@ rain_clouds <- graph_5_data %>%
   geom_vline(aes(xintercept = median_SUIP), col = "black", linetype = "dashed") +
   facet_wrap(~ fct_grp, nrow = 2, scales = "free") +
   #scales
-  scale_fill_manual(values = whanganui_palette(4)) +
-  scale_fill_ramp_discrete(na.translate = FALSE) +
+  scale_fill_manual(values = whanganui_palette(4), guide = "none") +
+  scale_fill_ramp_discrete(na.translate = FALSE,
+                           guide = guide_legend(override.aes = list(alpha = 1))) +
   scale_y_discrete(
   labels = set_names( #get the order for the title back
     graph_5_data %>% distinct(SUIP_grp, title) %>% pull(title),
@@ -634,8 +635,9 @@ rain_clouds <- graph_5_data %>%
   #theme
   theme_report() +
   theme(strip.text = element_blank(),
-        axis.text.y = element_text(hjust = 1))
-
+        axis.text.y = element_text(hjust = 1),
+        legend.position = "top",
+        legend.justification = c(0,1))
 
 ```
 
@@ -679,32 +681,27 @@ SUIP makes you pay more, but few have SUIP >= 3. Most are SUIP 1. With the most 
 
 If you have a home in Otamatea, you will pay more than other people relative to their homes. 
 
-```{r}
-Rates %>%
-  filter(year == 2026) %>%
-  filter(suburb %in% c("Otamatea", "Gonville")) %>%
-  select(suburb, `total rates`, cv, lv) %>%
-  ggplot(aes(x = `total rates`, colour = suburb, y = lv/10000)) +
-  geom_point() +
-  scale_color_manual(values = whanganui_palette())
-```
+#graph 7
 
-```{r}
+```{r grpah 7, fig.width=10, fig.height=5, warning=FALSE}
+#===== wrangling =====#
 max_row <- Rates %>%
   filter(rate_yr == '26_27', Category == "Residential") %>%
   slice_max(`total rates`, n = 1)
 
-Rates %>%
+graph_7_data <- Rates %>%
   filter(rate_yr == '26_27', Category == "Residential") %>% #avoid double counting
-  filter(!(`total rates` == max_row$`total rates`)) %>% #remove the max row
-  # mutate(Category = factor(Category, levels = c('Specialist', 'Farming', 'Commercial', 'Residential'))) %>%
+  filter(!(`total rates` == max_row$`total rates`))
+
+#===== box and dots =====%
+box_suburbs <- graph_7_data %>%
   ggplot(aes(x=log(`total rates`), y = suburb, col= suburb)) +
   geom_point(position = position_jitterdodge(jitter.width = 1), alpha = 0.3, size = 1) +
   geom_boxplot(col = 'black', fill = NA, outlier.shape = NA, size = 0.7) +
   #annotation specific code. The max rates unit
   geom_point(data = max_row,
              aes(x = log(`total rates`), y = suburb),
-             colour = "#AD1619", size = 3, inherit.aes = FALSE) +
+             colour = "#008242", size = 3, inherit.aes = FALSE) +
   annotate("point",
            x = log(max_row$`total rates`),
            y = max_row$suburb,
@@ -712,15 +709,54 @@ Rates %>%
   #scales
   scale_color_manual(values = whanganui_palette()) +
   #labels
-  labs(title = "The highest individual rates are commerical.",
-       subtitle = "property 72940 paid $1,013,421 in rates.",
+  labs(title = "The highest individual residential rates are in Onamatea",
+    subtitle = "property 4849 paid $99,549.64 in rates.",
        y = '', 
        x = 'Log of total rates') +
   #theme
   theme_report() +
   theme(legend.position = 'none',
         panel.grid.major.y = element_blank(),)
+
+#===== dot graph =====#
+dots_graph <- graph_7_data %>%
+  ggplot(aes(x=`total rates`, y = suburb, fill= suburb, color = suburb)) + 
+  stat_dots(
+    aes(fill_ramp = after_stat(level),
+        color_ramp = after_stat(level)),
+    .width = widths,
+    side = "top",
+    quantiles = 100,
+    binwidth = unit(c(3, 8), "mm"),
+    overflow = "compress",
+    dotsize = 0.5
+  ) +
+  # #scales
+  scale_fill_manual(values = whanganui_palette(), guide = "none") +
+  scale_color_manual(values = whanganui_palette(), guide = "none") +
+  scale_fill_ramp_discrete(na.translate = FALSE,
+                           guide = guide_legend(override.aes = list(alpha = 1))) +
+  scale_color_ramp_discrete(na.translate = FALSE, guide = "none") +
+  scale_x_continuous(limits = c(NA, 7500)) +
+  # labels
+  labs(title = "",
+       subtitle = "",
+       y = '', 
+       x = 'Total rates') +
+  #theme
+  theme_report() +
+  theme(legend.position = 'top',
+        panel.grid.major.y = element_blank(),
+        axis.text.y = element_blank())
+
+#===== graph =====#
+box_suburbs | dots_graph
 ```
+
+
+
+
+
 ```{r}
 Rates %>%
   filter(Category == "Residential") %>%
