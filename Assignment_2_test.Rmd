@@ -482,19 +482,17 @@ box_suburbs | dots_graph
 #Are rate payers all paying their 'fair share?'
 So, who pays the most in residential rates? Proportionally, it is Otamatea rates payers. Their payments are larger than other rates payers not just in value, but also relative to all rates payers. Proportionally, the median is around 0.006 from 2023 onwards Even if they pay less as a combined group. St John's hill comes in second at 0.0059. Rural rate payers pay the least, at 0.0042. Note the quantile intervals. Central has the highest rateable units as outliers, while Otamatea has a few low valued outliers. There is overlap in each suburb with each other suburb. In general, the observation holds. Higher median rate paying suburbs pay more than their "fair" share. Obviously, "fair" here is a construct. Rates are not even, they are based off of QV value and SUIPs. 
 
-
-```{r graph 4, fig.width=15, fig.height=8}
+```{r, fig.width=15, fig.height=8}
 #==== Wrangling ====#
-#residential
 residential <- Rates %>%
-  filter(Category == "Residential") 
+  filter(Category == "Residential")
 
-#proportion
 equal_prop <- residential %>%
   group_by(year) %>%
   summarise(prop = 100 / n(), .groups = "drop") %>%
   tidyr::crossing(suburb = unique(residential$suburb))
 
+#prop data
 prop_data <- residential %>%
   group_by(year) %>%
   mutate(prop = 100 * `total rates` / sum(`total rates`)) %>%
@@ -502,18 +500,19 @@ prop_data <- residential %>%
   group_by(year, suburb) %>%
   reframe(median_qi(prop, .width = c(.25, .50, .80, .95)))
 
-#ranking suburbs
+# ranking suburbs
 suburb_rank <- prop_data %>%
   filter(year == 2026, .width == 0.50) %>%
+  select(suburb, y) %>%
   mutate(rank = rank(-y, ties.method = "min")) %>%
   arrange(rank)
 
 #final data
 graph_3_data <- prop_data %>%
   left_join(suburb_rank %>% select(suburb, rank), by = "suburb") %>%
-  mutate(suburb_ranked = factor(
-    paste0(suburb, ", rank ", rank),
-    levels = paste0(suburb_rank$suburb, ", rank ", suburb_rank$rank)
+  mutate(suburb_label = factor(
+    paste0(suburb, ", rank = ", rank),
+    levels = paste0(suburb_rank$suburb, ", rank = ", suburb_rank$rank)
   ))
 
 #==== Graph ====#
@@ -523,21 +522,76 @@ graph_3_data %>%
                   color = "#DC0100", alpha = 0.5, linewidth = 1) +
   geom_line(data = equal_prop, aes(x = year, y = prop),
             col = "black", linetype = "dashed", linewidth = 1) +
-  facet_wrap(~ suburb_ranked, ncol = 5) +
+  facet_wrap(~ suburb_label, ncol = 5) +
+  scale_x_continuous(labels = function(x) x %% 100) +
+  scale_fill_manual(values = c("#C7E9F3", "#92B8D8", "#5C88BD","#2757A2"),
+                    name = "Quantiles") +
+  labs(title = "Otamatea rate payers pay proportionally the most rates",
+       subtitle = "The four more expensive suburbs pay proportionally more rates than cheaper ones.",
+       x = "Year",
+       y = "Proportion of rates paid per unit",
+       caption = "Black dotted line is the proportion if every house paid the same share towards rates.") +
+  theme_report()
+```
+
+#area
+
+Land area does not  equal land value. 
+Do high QV values cluster together in such a way I can show it?
+QV values are calculated based off of some external process. If one goes up, then others nearby do too. Therefore, there is no obvious pattern in the area or SUIP or location of a home. QV based rates are not 'fair' in this sense. They end up accumulating rate value increases to place that see more high value sales. 
+
+```{r, fig.width=15, fig.height=8}
+#===== Wrangling =====#
+residential_area <- Rates %>% 
+  filter(Category == "Residential", !is.na(`rate area (ha)`)) %>%
+  mutate(rate_per_m = `rate area (ha)` * 10000)
+
+Rates_per_meter <- residential_area %>% 
+  summarise(total_rates = sum(`total rates`), 
+            total_area = sum(rate_per_m),
+            rate_per_ha = total_rates / total_area) %>%
+  pull()
+
+area_rank <- residential_area %>% 
+  group_by(suburb) %>%
+  summarise(median = round(median(`rate area (ha)` * 10000), 0)) %>%
+  mutate(rank = rank(-median, ties.method = "min")) %>%   
+  arrange(rank)    
+
+graph_6_data <- residential_area %>%
+  mutate(rates_per_area = `total rates` / rate_per_m) %>%
+  group_by(suburb, year) %>%
+  reframe(median_qi(rates_per_area, .width = c(.25, .50, .80, .95))) %>%
+  left_join(area_rank %>% select(suburb, median), by = "suburb") %>%
+  mutate(suburb_label = factor(
+    paste0(suburb, "\nmedian area = ", median),
+    levels = paste0(area_rank$suburb, "\nmedian area = ", area_rank$median)
+  ))
+  
+
+#===== Graph =====#
+graph_6_data %>%
+  ggplot(aes(x = year, y = y)) +
+  geom_lineribbon(aes(ymin = ymin, ymax = ymax),
+                  color = "#DC0100", alpha = 0.5, linewidth = 1) +
+  geom_hline(aes(yintercept = Rates_per_meter), col = "black",
+             linetype = 'dashed') +
+  facet_wrap(~ suburb_label, ncol = 5) +  
   #scale arguments
   scale_x_continuous(labels = function(x) x %% 100) +
+  scale_y_continuous(labels = scales::label_number(accuracy = 1)) +
   scale_fill_manual(values = c("#C7E9F3", "#92B8D8", "#5C88BD","#2757A2"),
                     name = "Quantiles") +
   #labels
   labs(title = "Otamatea rate payers pay proportionally the most rates",
        subtitle = "The four more expensive suburbs pay proportionally more rates than cheaper ones.",
        x = "Year",
-       y = "Proportion of rates paid per unit",
-       caption = "Black dotted line is the proportion if every house paid the same share towards rates.") +
+       y = "Rates per m² (NZD)",
+       caption = "Black dotted line is the average rates per meter squared across all Whanganui.") +
   #themes
   theme_report() 
-```
 
+```
 
 #Graph 4 - rain clouds by SUIP
 
@@ -673,64 +727,7 @@ SUIP makes you pay more, but few have SUIP >= 3. Most are SUIP 1. With the most 
 
 If you have a home in Otamatea, you will pay more than other people relative to their homes. 
 
-look by area
-#area
 
-```{r, fig.width=10, fig.height=8}
-#===== Wrangling =====#
-residential_area <- Rates %>% 
-  filter(Category == "Residential", !is.na(`rate area (ha)`)) %>%
-  mutate(rate_per_m = `rate area (ha)` * 10000)
-
-Rates_per_meter <- residential_area %>% 
-  summarise(total_rates = sum(`total rates`), 
-            total_area = sum(rate_per_m),
-            rate_per_ha = total_rates / total_area) %>%
-  pull()
-
-area_rank <- residential_area %>% 
-  group_by(suburb) %>%
-  summarise(median = round(median(`rate area (ha)` * 10000), 0)) %>%
-  mutate(rank = rank(-median, ties.method = "min")) %>%   
-  arrange(rank)    
-
-graph_6_data <- residential_area %>%
-  mutate(rates_per_area = `total rates` / rate_per_m) %>%
-  group_by(suburb, year) %>%
-  reframe(median_qi(rates_per_area, .width = c(.25, .50, .80, .95))) %>%
-  mutate(suburb = factor(suburb, levels = area_rank$suburb))
-  
-
-#===== Graph =====#
-graph_6_data %>%
-  ggplot(aes(x = year, y = y)) +
-  geom_lineribbon(aes(ymin = ymin, ymax = ymax),
-                  color = "#DC0100", alpha = 0.5, linewidth = 1) +
-  # geom_line(data = Rates_per_ha_suburb, aes(x = year, y = median_per_ha),
-  #           col = "black", linetype = "dashed", linewidth = 1) +
-  geom_hline(aes(yintercept = Rates_per_meter), col = "black",
-             linetype = 'dashed') +
-  facet_wrap(~ suburb, ncol = 5,
-             labeller = function(labels) {
-               s <- as.character(labels$suburb)
-               med <- area_rank$median[match(s, as.character(area_rank$suburb))]
-               list(suburb = paste0(s, "\nmedian area = ", med))
-             }) +  
-  #scale arguments
-  scale_x_continuous(labels = function(x) x %% 100) +
-  scale_y_continuous(labels = scales::label_number(accuracy = 1)) +
-  scale_fill_manual(values = c("#C7E9F3", "#92B8D8", "#5C88BD","#2757A2"),
-                    name = "Quantiles") +
-  #labels
-  labs(title = "Otamatea rate payers pay proportionally the most rates",
-       subtitle = "The four more expensive suburbs pay proportionally more rates than cheaper ones.",
-       x = "Year",
-       y = "Rates per m² (NZD)",
-       caption = "Black dotted line is the average rates per meter squared across all Whanganui.") +
-  #themes
-  theme_report() 
-
-```
 
 
 
@@ -740,8 +737,8 @@ graph_6_data %>%
 Rates %>%
   filter(Category == "Residential") %>%
   group_by(suburb) %>%
-  summarise(m = mean(`total rates`), 
-            mm = max(`total rates`))
+  ggplot(aes(x = cv+lv, y = `total rates`, col = suburb)) + 
+  geom_point() + geom_smooth()
 
 Data
 ```
@@ -786,5 +783,8 @@ cumulative_chart <- cumulative_data %>%
   theme(legend.position = 'none',
       strip.text = element_text(face = "bold"))
 ```
+
+
+#test network
 
 
