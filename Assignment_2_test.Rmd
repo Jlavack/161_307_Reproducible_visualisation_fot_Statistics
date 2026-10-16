@@ -13,6 +13,8 @@ library(ggdist)
 library(maps)    
 library(sf)  
 library(patchwork)
+library(igraph)
+library(ggraph)
 library(showtext)
 font_add_google("Inter", "Inter")
 showtext_auto()
@@ -412,15 +414,7 @@ rural_count <- graph_3_data %>%
 #===== Median rates map =====#
 median_map <- map_graph(map_data, "median_rates", 'Median rates')
 
-#===== total rates map =====#
-# total_map <- map_graph(map_data, "total", 'Total rates')
-
-#patchwork the plot together.
-# (median_map | total_map) +
-#   plot_annotation(title = 'Residential rates in year 2026/27.',
-#                   subtitle = 'Otamatea has the highest residential rates, Gonville pays the most rates in total.',
-#                   theme = theme(plot.title = element_text(size = 30),
-#                                 plot.subtitle = element_text(size = 20)))
+#
 ```
 
 
@@ -716,6 +710,75 @@ rain_clouds +
   inset_element(heatmap, left = 0.5, bottom = 0.6, right = 1, top = 1)
 ```
 
+#QV clustering
+
+
+
+```{r QV network}
+#===== Wrangling =====#
+set.seed(21)
+
+street_data <- Residential %>% 
+  filter(year == 2026) %>%
+  select(property_no, assessment_number, property_address, suburb, QV, year, `total rates`) %>%
+  mutate(
+      street = str_remove(property_address, "~WHANGANUI.*$"),
+      street = str_remove(street, "^\\s*\\d+\\s*"),
+      assess_num = str_remove(assessment_number, "[A-Z]+$") |> as.numeric()
+  ) %>%
+  filter(!is.na(street)) %>%
+  group_by(suburb) %>%
+  slice_sample(prop = 1000 / nrow(street_data)) %>%
+  ungroup() 
+
+# Build edges using assessment_no as the ID. It it a proxy for closeness that is easier to work with. I looked through the data and that is what I saw. Streets were alphabetically arranged, by street number within suburbs with the property number indicating closeness. 
+street_edges <- street_data %>%
+  select(property_address, suburb, street, QV, assess_num) %>%
+  rename(from = QV, from_id = assess_num) %>%
+  left_join(
+    street_data %>%
+      select(property_address, suburb, street, QV, assess_num) %>%
+      rename(to = QV, to_id = assess_num),
+    by = c("suburb", "street"),
+    relationship = "many-to-many"
+  ) %>%
+  filter(
+    from_id != to_id,
+    #set the number of neighbours used... assessment ids are proxy for neighbouring units, so larger mean more nieghbours, smaller value here means fewer. 
+    abs(from_id - to_id) <= 1000000000, #10 digits is max
+    from_id < to_id
+  ) %>%
+  #price of point of origin, to the nearby units, normalised so 1 = the same QV, and 0 = most different. 
+  mutate(sim = 1 - abs(from - to) / max(from, to)) %>%
+  #toggle similarity level. 
+  filter(sim >= 0.5) %>%
+  select(from_id, to_id, sim, suburb)
+
+# Build graph — vertices are property_no (unique)
+g <- graph_from_data_frame(
+  street_edges %>% select(from_id, to_id, sim, suburb),
+  vertices = street_data %>%
+    distinct(assess_num, suburb) %>%
+    set_names(c("name", "suburb")),
+  directed = FALSE
+)
+
+#===== Plot =====#
+ggraph(g, layout = "fr") +
+  geom_edge_link(aes(edge_width = sim), alpha = 0.6, colour = "grey40") +
+  geom_node_point(aes(colour = factor(suburb)), size = 3, alpha = 0.7) +
+  scale_edge_width(range = c(0.2, 1), guide = "none") +
+  scale_color_manual(values = whanganui_palette(10)) +  
+  labs(title = "Similar location, similar QV.",
+       subtitle = "Rateable units cluster within suburb streets, not between suburbs.",
+       colour = "Suburb",
+       caption = "network made with representative sample of 1000 units.") +
+  theme_void(base_family = "Inter") +
+  theme(legend.position = "right",
+        plot.title = element_text(size = 20),
+        plot.subtitle = element_text(size = 15))
+```
+
 =============================================================================
 
 So who pays the most?
@@ -744,83 +807,6 @@ Data
 ```
 
 
-
-```{r}
-set.seed(21)
-
-street_data <- Rates %>% 
-  filter(Category == "Residential", year == 2026) %>%
-  select(property_no, assessment_number, property_address, suburb, lv, cv, year, `total rates`) %>%
-  mutate(
-      street = str_remove(property_address, "~WHANGANUI.*$"),
-      street = str_remove(street, "^\\s*\\d+\\s*"),
-  ) %>%
-  filter(!is.na(street), n_distinct(street) >= 3)
-
-n_suburbs <- n_distinct(street_data$suburb)
-per_suburb <- ceiling(1000 / n_suburbs)
-
-street_data <- street_data %>%
-  # filter(year == 2026) %>%
-  mutate(assess_num = str_remove(assessment_number, "[A-Z]+$") |> as.numeric()) %>%
-  group_by(suburb, street) %>%
-  filter(n() >=5) %>%
-  ungroup()
-
-street_data <- street_data %>%
-  group_by(suburb) %>%
-  slice_sample(prop = 1000 / nrow(street_data)) %>%
-  ungroup() %>%
-  slice_head(n = 1000) 
-```
-
-
-#test network
-```{r}
-library(igraph)
-library(ggraph)
-
-# Build edges using property_no as the ID
-street_edges <- street_data %>%
-  select(property_no, property_address, suburb, street, `total rates`, assess_num) %>%
-  rename(addr_from = property_address, rate_from = `total rates`, from_id = property_no) %>%
-  left_join(
-    street_data %>%
-      select(property_no, property_address, suburb, street, `total rates`, assess_num) %>%
-      rename(addr_to = property_address, rate_to = `total rates`, to_id = property_no),
-    by = c("suburb", "street"),
-    relationship = "many-to-many"
-  ) %>%
-  filter(
-    assess_num.x != assess_num.y,
-    abs(assess_num.x - assess_num.y) <= 1000000000, #10 digits is max
-    assess_num.x < assess_num.y
-  ) %>%
-  mutate(sim = 1 - abs(rate_from - rate_to) / max(rate_from, rate_to)) %>%
-  filter(sim >= 0.5) %>%
-  select(from_id, to_id, sim, suburb, addr_from, addr_to)
-
-# Build graph — vertices are property_no (unique)
-g <- graph_from_data_frame(
-  street_edges %>% select(from_id, to_id, sim, suburb, addr_from, addr_to),
-  vertices = street_data %>%
-    distinct(property_no, property_address, suburb) %>%
-    set_names(c("name", "property_address", "suburb")),
-  directed = FALSE
-)
-
-# Plot
-ggraph(g, layout = "fr") +
-  geom_edge_link(aes(edge_width = sim), alpha = 0.6, colour = "grey40") +
-  geom_node_point(aes(colour = factor(suburb)), size = 3, alpha = 0.7) +
-  scale_edge_width(range = c(0.2, 1)) +
-  scale_color_manual(values = whanganui_palette(10)) +  
-  labs(title = "Rate similarity network (for 1000 rateable units)",
-       subtitle = "Rateable units cluster within suburb streets, not between suburbs.",
-       colour = "Suburb") +
-  theme_void() +
-  theme(legend.position = "right")
-```
 
 
 
@@ -905,6 +891,19 @@ dots_graph <- graph_2_data %>%
         panel.grid.major.y = element_blank())
 ```
 
+
+##total rate maps
+```{r}
+#===== total rates map =====#
+# total_map <- map_graph(map_data, "total", 'Total rates')
+
+#patchwork the plot together.
+# (median_map | total_map) +
+#   plot_annotation(title = 'Residential rates in year 2026/27.',
+#                   subtitle = 'Otamatea has the highest residential rates, Gonville pays the most rates in total.',
+#                   theme = theme(plot.title = element_text(size = 30),
+#                                 plot.subtitle = element_text(size = 20)))
+```
 
 
 ##dendograms
