@@ -128,7 +128,7 @@ Rates <- wdc_rates %>%
     rate_yr == '26_27' ~ 2026,
     TRUE ~ NA,
     ),
-    QV = cv + lv + (abs(cv - lv)),
+    QV = cv + lv + (cv - lv),
     rate_per_m = `rate area (ha)` * 10000) %>%
   mutate(Category = factor(Category, 
                            levels = c('Specialist', 'Farming', 'Commercial', 'Residential'))) %>% #for consistent color coding
@@ -505,28 +505,32 @@ prop_data <- Residential %>%
 
 #final data
 graph_3_data <- prop_data %>%
-  left_join(Suburb_rank %>% select(suburb, rank), by = "suburb") %>%
+  left_join(Suburb_rank %>% 
+              select(suburb, rank), by = "suburb") %>%
   mutate(suburb_label = factor(
     paste0(suburb, ", rank = ", rank),
     levels = paste0(Suburb_rank$suburb, ", rank = ", Suburb_rank$rank)
   ))
 
 #==== Graph ====#
-graph_3_data %>%
+proportion_graph <- graph_3_data %>%
   ggplot(aes(x = year, y = y)) +
   geom_lineribbon(aes(ymin = ymin, ymax = ymax),
                   color = "#DC0100", alpha = 0.5, linewidth = 1) +
   geom_line(data = equal_prop, aes(x = year, y = prop),
             col = "black", linetype = "dashed", linewidth = 1) +
   facet_wrap(~ suburb_label, ncol = 5) +
+  #scale arguments
   scale_x_continuous(labels = function(x) x %% 100) +
   scale_fill_manual(values = c("#C7E9F3", "#92B8D8", "#5C88BD","#2757A2"),
                     name = "Quantiles") +
+  #labels
   labs(title = "Otamatea rate payers pay proportionally the most rates",
        subtitle = "The four more expensive suburbs pay proportionally more rates than cheaper ones.",
        x = "Year",
        y = "Proportion of rates paid per unit",
        caption = "Black dotted line is the proportion if every house paid the same share towards rates.") +
+  #theme
   theme_report()
 ```
 
@@ -563,7 +567,7 @@ graph_6_data <- residential_area %>%
   ))
 
 #===== Graph =====#
-graph_6_data %>%
+area_graph <- graph_6_data %>%
   ggplot(aes(x = year, y = y)) +
   geom_lineribbon(aes(ymin = ymin, ymax = ymax),
                   color = "#DC0100", alpha = 0.5, linewidth = 1) +
@@ -587,14 +591,12 @@ graph_6_data %>%
 ```
 
 
+
+
 #Graph 4 - rain clouds by SUIP
 
-Show rates by group
-and proportional rates. To  show that commericals pays more in prop than residentail. 
-
-Are the rich contributing? Look at total rates paid by residential suburb
-Maybe look at the stat half eye by subrub actual rates?
-what about the SUIPs.
+What about SUIPs? Each SUIP pays a fixed portion to rates. Are their enough multiple SUIPs to explain the difference in rates?
+No. Very few units are not single SUIP. Rural looks to have only slightly more0 or 2 SUIP units than other suburbs, but this is marginal at best. Most units are single SUIP. SUIPS cannot explain this discrepency - i.e. we do not see more SUIPs in higher valued suburbs. Even though total rates do increase with more SUIPs, this increase is obscurred at the aggregate level by the sheer volume of single SUIP units. 
 
 only 779 units have 3+ SUIPs
 
@@ -712,9 +714,20 @@ rain_clouds +
 
 #QV clustering
 
+So, if rate payers are not paying equally based on house area, and SUIPs do not alone account for the variance, 
+and we see that more expensive house contribute proportionally more, the question is why?
+
+Rates are determiend by QV valuations. QV is the land value plus the capital value plus the difference between land and capital value which is called the improvement value. Then a process called mass appraisal is applied which takes into account market information and area, consents, revaluations and so on. 
+
+What this means is that the rates are determined not by something which is 'fair', but by market desirability of a home. The more it is wanted (higher sale value) the higher the rates. In effect, rate payers are paying the QV valuation portion of their rates (there are fixed costs too) based on how much other people want to buy their homes. A tax for not selling. Every time people improve their homes, the value of nearby homes increases because the desirability has gone up for the whole street.  
+If it were the case that a raise in one home value attracted raises in other nearby homes then we would expect to see clustering of similar QV values in similar suburbs and streets. This is what we see in the below graph. 
+Each dot represents a unit, each cluster a group of similar QV values (50% similar). A tight cluster shows similar QV values in the same street. That clusters are always of the same colour indicates that QV similarity has a spatial proximity element. otherwise we'd see mixed coloured blobs. The network is naturally seprated into suburbs because streets tend not to cross suburbs often. This shows a natural ordering in the QV values. Suburbs and streets. 
+
+Basically, if more people would like to live in your house (higher demand) and you don't sell, you pay a premium. 
 
 
-```{r QV network}
+
+```{r QV network, fig.width=10, fig.height=5}
 #===== Wrangling =====#
 set.seed(21)
 
@@ -772,12 +785,16 @@ ggraph(g, layout = "fr") +
   labs(title = "Similar location, similar QV.",
        subtitle = "Rateable units cluster within suburb streets, not between suburbs.",
        colour = "Suburb",
-       caption = "network made with representative sample of 1000 units.") +
+       caption = "network made with representative sample of 997 units.") +
   theme_void(base_family = "Inter") +
   theme(legend.position = "right",
         plot.title = element_text(size = 20),
         plot.subtitle = element_text(size = 15))
 ```
+
+
+So, who pays the most and why?
+Well, people in higher valued suburbs pay more rates proportionally than other rate payers. They do this not really because of anything other than the fact that people want to live in higher valued suburbs. The market taxes them for the privilege. 
 
 =============================================================================
 
