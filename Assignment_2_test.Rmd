@@ -124,8 +124,10 @@ Rates <- wdc_rates %>%
     rate_yr == '24_25' ~ 2024,
     rate_yr == '25_26' ~ 2025,
     rate_yr == '26_27' ~ 2026,
-    TRUE ~ NA
-  )) %>%
+    TRUE ~ NA,
+    ),
+    QV = cv + lv + (abs(cv - lv)),
+    rate_per_m = `rate area (ha)` * 10000) %>%
   mutate(Category = factor(Category, 
                            levels = c('Specialist', 'Farming', 'Commercial', 'Residential'))) %>% #for consistent color coding
   select(-suburb_new) %>%
@@ -133,6 +135,20 @@ Rates <- wdc_rates %>%
                          "Otamatea (Whanganui District)" = "Otamatea",
                          "Whanganui District Rural" = "Rural",
                          "Bastia-Durie Hill-Putiki" = "Bastia-Durie"))
+
+#ranking for suburbs by median rates in 2026
+Suburb_rank <- Rates %>%
+  filter(Category == "Residential", year == 2026) %>%
+  group_by(suburb) %>% 
+  summarise(m = median(`total rates`)) %>%
+  mutate(rank = rank(-m, ties.method = "min")) %>%   
+  arrange(rank)    
+  
+
+Residential <- Rates %>%
+  filter(Category == "Residential") %>%
+  mutate(suburb = factor(suburb, levels = Suburb_rank$suburb))
+
 #===== Data wrangling finish =====#
 
 #===== Colour palette setup =====#
@@ -144,12 +160,12 @@ whanganui_palette <- function(n = 13, which = NULL) {
   "#008242", 
   "#DCC0E2", 
   "#C7E9F3",
-  "#004925",
+  "#687928",
   "#D4582A",
   "#8B514E",
   "#93735B",
   "#372502",
-  "#687928",
+  "#004925",
   "#FEEAD7",
   "black")
   
@@ -358,17 +374,23 @@ data %>%
            label = paste0("Rural\nn=", rural_count), 
            size = 3, fill = 'white') + #play with this to get the position right
   #Scale arguments
-  scale_fill_gradientn(colors = c("#008242", "#FEC30E", "#AD1619"),
+  scale_fill_gradientn(colors = whanganui_palette(3),
                        limits = range(data[[fill]]),
-                       name = title) +
+                       name = paste0(title, "\n(Thousands)"),
+                       labels = scales::label_number(scale = 1/1000)) +
   #Labels
-  labs(title = title,
+  labs(title = "",
        subtitle = '',
        x = '',
        y = '') +
   #Theme
-  theme_map()
+  theme_map() +
+  theme(legend.position = c(0.0, 0.0),
+        legend.justification = c(0, 0),
+        legend.direction = "horizontal",
+        text = element_text(family = "Inter"))
 }
+
 #===== Wrangling =====#
 graph_3_data <- Rates %>% 
   filter(year == 2026, Category == 'Residential') %>%
@@ -377,10 +399,6 @@ graph_3_data <- Rates %>%
             count = n(),
             total = sum(`total rates`),
             .groups = 'drop') 
-
-w <- whanganui %>%
-    mutate(sa3_name = recode(sa3_name,
-                         "Otamatea (Whanganui District)" = "Otamatea"))
 
 map_data <- whanganui %>%
   left_join(graph_3_data, by = c('sa3_name' = "suburb")) 
@@ -395,88 +413,81 @@ rural_count <- graph_3_data %>%
 median_map <- map_graph(map_data, "median_rates", 'Median rates')
 
 #===== total rates map =====#
-total_map <- map_graph(map_data, "total", 'Total rates')
+# total_map <- map_graph(map_data, "total", 'Total rates')
 
 #patchwork the plot together.
-(median_map | total_map) +
-  plot_annotation(title = 'Residential rates in year 2026/27.',
-                  subtitle = 'Otamatea has the highest residential rates, Gonville pays the most rates in total.',
-                  theme = theme(plot.title = element_text(size = 30),
-                                plot.subtitle = element_text(size = 20)))
+# (median_map | total_map) +
+#   plot_annotation(title = 'Residential rates in year 2026/27.',
+#                   subtitle = 'Otamatea has the highest residential rates, Gonville pays the most rates in total.',
+#                   theme = theme(plot.title = element_text(size = 30),
+#                                 plot.subtitle = element_text(size = 20)))
 ```
 
 
 #A closer look by suburb.
 Taking a closer look at the rates by suburb we can see that the highest residential rate is in Gonville! While Otamatea has a higher median and a lower spread of rates, Gonville is almost the excat same in total rates distribution as Castle Cliff, with the exception of a few major outliers that increase the sum of total rates paid. St John's Hill has a very wide distribution, despite being a high median rate suburb. Almost no suburb has rate below $,3000 (excluding outliers), with the exception of the very widely spread rural area. With the exception of Otamatea and Rural, the other suburbs are quite similar in median rates in that there is plenty of overlap visible in the box charts. 
 
-```{r grpah 7, fig.width=10, fig.height=5, warning=FALSE}
+```{r grpah 7, fig.width=15, fig.height=8, warning=FALSE}
 #===== wrangling =====#
-max_row <- Rates %>%
-  filter(rate_yr == '26_27', Category == "Residential") %>%
+Total_rates_suburb <- Residential %>%
+  filter(year == 2026) %>%
+  group_by(suburb) %>% 
+  summarise(t = sum(`total rates`))
+
+graph_2_data <- Residential %>%
+  filter(year == 2026) %>% #avoid double counting
+  left_join(Total_rates_suburb %>% select(suburb, t), by = "suburb") %>%
+  mutate(suburb_label = factor(
+    paste0(suburb, "\nTotal rates = $", round(t / 1e6, 1), "M"),
+    levels = paste0(Suburb_rank$suburb, "\nTotal rates = $",
+                    round(Total_rates_suburb$t[match(Suburb_rank$suburb,
+                                                     Total_rates_suburb$suburb)] / 1e6, 1), "M")
+  ))
+
+max_row <- graph_2_data %>%
+  filter(year == 2026) %>%
   slice_max(`total rates`, n = 1)
 
-graph_2_data <- Rates %>%
-  filter(rate_yr == '26_27', Category == "Residential") %>% #avoid double counting
+#final dataset
+graph_2_data <- graph_2_data %>%
   filter(!(`total rates` == max_row$`total rates`))
 
 #===== box and dots =====%
 box_suburbs <- graph_2_data %>%
-  ggplot(aes(x=log(`total rates`), y = suburb, col= suburb)) +
-  geom_point(position = position_jitterdodge(jitter.width = 1), alpha = 0.3, size = 1) +
+  mutate(suburb_label = forcats::fct_rev(as.factor(suburb_label))) %>% 
+  ggplot(aes(x=log(`total rates`), y = suburb_label, col= suburb)) +
+  geom_point(position = position_jitterdodge(jitter.width = 1), alpha = 0.1, size = 1, shape = 16) +
   geom_boxplot(col = 'black', fill = NA, outlier.shape = NA, size = 0.7) +
   #annotation specific code. The max rates unit
   geom_point(data = max_row,
-             aes(x = log(`total rates`), y = suburb),
-             colour = "#008242", size = 3, inherit.aes = FALSE) +
+             aes(x = log(`total rates`), y = suburb_label),
+             colour = "#687928", size = 3, inherit.aes = FALSE) +
   annotate("point",
            x = log(max_row$`total rates`),
-           y = max_row$suburb,
+           y = max_row$suburb_label,
            size = 8, colour = "black", shape = 1) +
   #scales
   scale_color_manual(values = whanganui_palette()) +
   #labels
-  labs(title = "The highest individual residential rates are in Otamatea",
-    subtitle = "While in Gonville property 4849 paid the highest, $99,549.64 in rates.",
+  labs(title = "",
+    subtitle = "",
        y = '', 
        x = 'Log of total rates') +
   #theme
   theme_report() +
   theme(legend.position = 'none',
-        panel.grid.major.y = element_blank(),)
-
-#===== dot graph =====#
-dots_graph <- graph_2_data %>%
-  ggplot(aes(x=`total rates`, y = suburb, fill= suburb, color = suburb)) + 
-  stat_dots(
-    aes(fill_ramp = after_stat(level),
-        color_ramp = after_stat(level)),
-    .width = widths,
-    side = "top",
-    quantiles = 100,
-    binwidth = unit(c(3, 8), "mm"),
-    overflow = "compress",
-    dotsize = 0.5
-  ) +
-  # #scales
-  scale_fill_manual(values = whanganui_palette(), guide = "none") +
-  scale_color_manual(values = whanganui_palette(), guide = "none") +
-  scale_fill_ramp_discrete(na.translate = FALSE,
-                           guide = guide_legend(override.aes = list(alpha = 1))) +
-  scale_color_ramp_discrete(na.translate = FALSE, guide = "none") +
-  scale_x_continuous(limits = c(NA, 7500)) +
-  # labels
-  labs(title = "",
-       subtitle = "",
-       y = '', 
-       x = 'Total rates') +
-  #theme
-  theme_report() +
-  theme(legend.position = 'top',
-        panel.grid.major.y = element_blank(),
-        axis.text.y = element_blank())
+        panel.grid.major.y = element_blank())
 
 #===== graph =====#
-box_suburbs | dots_graph
+(box_suburbs | median_map) +
+  plot_annotation(
+    title = "Otamatea has the highest median rates. Gonville the highest total rates.",
+    subtitle = "Property 4849 in Gonville paid the highest rates: $99,549.64",
+    theme = theme(
+      plot.title = element_text(size = 30, family = "Inter"),
+      plot.subtitle = element_text(size = 20, family = "Inter",
+                                   margin = margin(b = -25)
+    )))
 ```
 
 
@@ -485,35 +496,25 @@ So, who pays the most in residential rates? Proportionally, it is Otamatea rates
 
 ```{r, fig.width=15, fig.height=8}
 #==== Wrangling ====#
-residential <- Rates %>%
-  filter(Category == "Residential")
-
-equal_prop <- residential %>%
+equal_prop <- Residential %>%
   group_by(year) %>%
   summarise(prop = 100 / n(), .groups = "drop") %>%
   tidyr::crossing(suburb = unique(residential$suburb))
 
 #prop data
-prop_data <- residential %>%
+prop_data <- Residential %>%
   group_by(year) %>%
   mutate(prop = 100 * `total rates` / sum(`total rates`)) %>%
   ungroup() %>%
   group_by(year, suburb) %>%
   reframe(median_qi(prop, .width = c(.25, .50, .80, .95)))
 
-# ranking suburbs
-suburb_rank <- prop_data %>%
-  filter(year == 2026, .width == 0.50) %>%
-  select(suburb, y) %>%
-  mutate(rank = rank(-y, ties.method = "min")) %>%
-  arrange(rank)
-
 #final data
 graph_3_data <- prop_data %>%
-  left_join(suburb_rank %>% select(suburb, rank), by = "suburb") %>%
+  left_join(Suburb_rank %>% select(suburb, rank), by = "suburb") %>%
   mutate(suburb_label = factor(
     paste0(suburb, ", rank = ", rank),
-    levels = paste0(suburb_rank$suburb, ", rank = ", suburb_rank$rank)
+    levels = paste0(Suburb_rank$suburb, ", rank = ", Suburb_rank$rank)
   ))
 
 #==== Graph ====#
@@ -543,9 +544,8 @@ QV values are calculated based off of some external process. If one goes up, the
 
 ```{r, fig.width=15, fig.height=8}
 #===== Wrangling =====#
-residential_area <- Rates %>% 
-  filter(Category == "Residential", !is.na(`rate area (ha)`)) %>%
-  mutate(rate_per_m = `rate area (ha)` * 10000)
+residential_area <- Residential %>% 
+  filter(!is.na(`rate area (ha)`)) 
 
 Rates_per_meter <- residential_area %>% 
   summarise(total_rates = sum(`total rates`), 
@@ -553,22 +553,20 @@ Rates_per_meter <- residential_area %>%
             rate_per_ha = total_rates / total_area) %>%
   pull()
 
-area_rank <- residential_area %>% 
+suburb_area <- residential_area %>% 
   group_by(suburb) %>%
-  summarise(median = round(median(`rate area (ha)` * 10000), 0)) %>%
-  mutate(rank = rank(-median, ties.method = "min")) %>%   
-  arrange(rank)    
+  summarise(median = round(median(rate_per_m), 0)) 
 
 graph_6_data <- residential_area %>%
   mutate(rates_per_area = `total rates` / rate_per_m) %>%
   group_by(suburb, year) %>%
   reframe(median_qi(rates_per_area, .width = c(.25, .50, .80, .95))) %>%
-  left_join(area_rank %>% select(suburb, median), by = "suburb") %>%
+  left_join(suburb_area %>% select(suburb, median), by = "suburb") %>%
   mutate(suburb_label = factor(
     paste0(suburb, "\nmedian area = ", median),
-    levels = paste0(area_rank$suburb, "\nmedian area = ", area_rank$median)
+    levels = paste0(Suburb_rank$suburb, "\nmedian area = ", 
+                    suburb_area$median[match(Suburb_rank$suburb, suburb_area$suburb)])
   ))
-  
 
 #===== Graph =====#
 graph_6_data %>%
@@ -593,6 +591,7 @@ graph_6_data %>%
   theme_report() 
 
 ```
+
 
 #Graph 4 - rain clouds by SUIP
 
@@ -745,46 +744,6 @@ Data
 ```
 
 
-=================================================
-#graph graveyard
-
-```{r}
-#===== Cumulative percent change =====#
-cumulative_data <- timeseries_data %>%
-  group_by(year, Category) %>%
-  summarise(pct_change = mean(pct_change), .groups = 'drop') %>%
-  group_by(Category) %>%
-  arrange(year) %>% #should be arranged already... paranoid
-  mutate(cum_chg = cumsum(pct_change))
-
-avg_cum_perc <- cumulative_data %>% group_by(year) %>% summarise(avg = mean(cum_chg))
-
-cumulative_chart <- cumulative_data %>%
-  ggplot(aes(x = year, col = Category)) +
-  geom_line(aes(y = cum_chg), linewidth = 0.8) +
-  geom_line(data = avg_cum_perc, aes(x = year, y = avg, col = 'Average'),
-            linewidth = 1, linetype = 'dashed') +
-  #scales
-  scale_x_continuous(labels = x_labels) +
-  scale_y_continuous(limits = c(round(min(cumulative_data$cum_chg),0), 
-                                round(max(cumulative_data$cum_chg),0)),
-                    breaks = scales::breaks_width(10)) +
-  scale_color_manual(values = c(
-      setNames(whanganui_palette(4), c('Specialist', 'Farming', 'Commercial', 'Residential')),
-      "Average" = "black")) +
-  #labels
-  labs(
-    title = 'Cumulatively, residential rates have changed the least',
-    subtitle = "Consistently just below the average",
-    x = '',
-    y = 'Percent'
-  ) +
-  #theme
-  theme_minimal() +
-  theme(legend.position = 'none',
-      strip.text = element_text(face = "bold"))
-```
-
 
 ```{r}
 set.seed(21)
@@ -856,7 +815,7 @@ ggraph(g, layout = "fr") +
   geom_node_point(aes(colour = factor(suburb)), size = 3, alpha = 0.7) +
   scale_edge_width(range = c(0.2, 1)) +
   scale_color_manual(values = whanganui_palette(10)) +  
-  labs(title = "Rate similarity network",
+  labs(title = "Rate similarity network (for 1000 rateable units)",
        subtitle = "Rateable units cluster within suburb streets, not between suburbs.",
        colour = "Suburb") +
   theme_void() +
@@ -864,6 +823,91 @@ ggraph(g, layout = "fr") +
 ```
 
 
+
+=================================================
+#graph graveyard
+
+##cumsum graph
+```{r}
+#===== Cumulative percent change =====#
+cumulative_data <- timeseries_data %>%
+  group_by(year, Category) %>%
+  summarise(pct_change = mean(pct_change), .groups = 'drop') %>%
+  group_by(Category) %>%
+  arrange(year) %>% #should be arranged already... paranoid
+  mutate(cum_chg = cumsum(pct_change))
+
+avg_cum_perc <- cumulative_data %>% group_by(year) %>% summarise(avg = mean(cum_chg))
+
+cumulative_chart <- cumulative_data %>%
+  ggplot(aes(x = year, col = Category)) +
+  geom_line(aes(y = cum_chg), linewidth = 0.8) +
+  geom_line(data = avg_cum_perc, aes(x = year, y = avg, col = 'Average'),
+            linewidth = 1, linetype = 'dashed') +
+  #scales
+  scale_x_continuous(labels = x_labels) +
+  scale_y_continuous(limits = c(round(min(cumulative_data$cum_chg),0), 
+                                round(max(cumulative_data$cum_chg),0)),
+                    breaks = scales::breaks_width(10)) +
+  scale_color_manual(values = c(
+      setNames(whanganui_palette(4), c('Specialist', 'Farming', 'Commercial', 'Residential')),
+      "Average" = "black")) +
+  #labels
+  labs(
+    title = 'Cumulatively, residential rates have changed the least',
+    subtitle = "Consistently just below the average",
+    x = '',
+    y = 'Percent'
+  ) +
+  #theme
+  theme_minimal() +
+  theme(legend.position = 'none',
+      strip.text = element_text(face = "bold"))
+```
+
+##dot graph
+```{r}
+#===== dot graph =====#
+dots_graph <- graph_2_data %>%
+  ggplot(aes(x=log(`total rates`), y = suburb, fill= suburb, color = suburb)) + 
+  stat_dots(
+    aes(fill_ramp = after_stat(level),
+        color_ramp = after_stat(level)),
+    .width = widths,
+    side = "top",
+    quantiles = 100,
+    binwidth = unit(c(3, 8), "mm"),
+    overflow = "compress",
+    dotsize = 0.5
+  ) +
+  geom_point(data = max_row,
+             aes(x = log(`total rates`), y = suburb),
+             colour = "#004925", size = 3, inherit.aes = FALSE) +
+  annotate("point",
+           x = log(max_row$`total rates`),
+           y = max_row$suburb,
+           size = 8, colour = "black", shape = 1) +
+  # #scales
+  scale_fill_manual(values = whanganui_palette(), guide = "none") +
+  scale_color_manual(values = whanganui_palette(), guide = "none") +
+  scale_fill_ramp_discrete(na.translate = FALSE,
+                           guide = guide_legend(override.aes = list(alpha = 1))) +
+  scale_color_ramp_discrete(na.translate = FALSE, guide = "none") +
+  scale_x_continuous(limits = c(7, NA)) +
+  # labels
+  labs(title = "The highest individual residential rates are in Otamatea",
+       subtitle = "While in Gonville property 4849 paid the highest, $99,549.64 in rates.",
+       y = '', 
+       x = 'Total rates') +
+  #theme
+  theme_report() +
+  theme(legend.position = 'top',
+        panel.grid.major.y = element_blank())
+```
+
+
+
+##dendograms
 Try a dendro gram. Show the street clusters. 
 
 ```{r}
