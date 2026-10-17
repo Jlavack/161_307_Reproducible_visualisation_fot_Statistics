@@ -229,8 +229,9 @@ x_labels <- c('2022/23', '2023/24', '2024/25', '2025/26', '2026/27')
 ```
 
 ```{r}
-Data %>% 
-  filter(!is.na(CBD))
+saveRDS(nz, "nz_sa3.rds")
+st_write(nz, "nz_sa3.gpkg")
+st_drivers()
 ```
 
 
@@ -362,6 +363,14 @@ Box <- graph_1_data %>%
   plot_annotation(title = "Rates by Category in rate year 2026/27",
                   theme = theme(plot.title = element_text(size = 30, family = "Inter")))
 ```
+
+```{r}
+Rates %>% group_by(Category) %>% summarise(sum = sum(`total rates`)) %>% 
+  mutate(per = sum / sum(sum))
+
+Suburb_rank
+```
+
 
 # Where are residential rates highest?
 For the year 2026/27, within the residential rates category, the highest median rates are paid in the Otamatea suburb (\$5,213.6), but the least total rates (\$3,090,701). Otamatea has the highest valued houses, but the fewest houses (593), this is why. Gonville, on the other hand pays the most total rates (\$12,198,414), and lower medians rates ($3928,71). Gonville has the most houses (2916) of any suburb. 
@@ -992,4 +1001,95 @@ fviz_dend(dend, k = n_distinct(street_rates$suburb),
                      name = "Cluster")
 ```
 
+
+```{r}
+nz
+```
+
+
+
+```{r}
+#==== Wrangling ====#
+# Equal share (existing)
+equal_prop <- Residential %>%
+  group_by(year) %>%
+  summarise(prop = 100 / n(), .groups = "drop") %>%
+  tidyr::crossing(suburb = unique(Residential$suburb))
+
+# Value-proportional share 
+value_prop <- Residential %>%
+  group_by(year) %>%
+  summarise(prop = 100 * mean(QV) / sum(QV), .groups = "drop") %>%
+  tidyr::crossing(suburb = unique(Residential$suburb))
+
+# Actual rate share per property 
+graph_3_data <- Residential %>%
+  group_by(year) %>%
+  mutate(
+    prop = 100 * `total rates` / sum(`total rates`),
+    value_share = 100 * QV / sum(QV)
+  ) %>%
+  ungroup() %>%
+  group_by(year, suburb) %>%
+  reframe(median_qi(prop, .width = c(.25, .50, .80, .95)))
+
+
+graph_3_data %>%
+  ggplot(aes(x = year, y = y)) +
+  geom_lineribbon(aes(ymin = ymin, ymax = ymax),
+                  color = "#DC0100", alpha = 0.5, linewidth = 0.5) +
+  # geom_line(data = equal_prop, aes(x = year, y = prop),
+  #           col = "black", linetype = "dashed", linewidth = 0.5) +
+  geom_line(data = value_prop, aes(x = year, y = prop),
+          col = "black", linetype = "dashed", linewidth = 0.5) +
+  facet_wrap(~ suburb, ncol = 5) +
+  #scale arguments
+  scale_x_continuous(labels = function(x) x %% 100) +
+  scale_fill_manual(values = c("#C7E9F3", "#92B8D8", "#5C88BD","#2757A2"),
+                    name = "Quantiles") +
+  #labels
+  labs(title = "Rate payments are not evenly spread.",
+       subtitle = "Otamatea rate payers pay proportionally the most rates",
+       x = "Year",
+       y = "Proportion of rates paid per unit (%)",
+       caption = "Black dotted line is the proportion if every house paid the same share towards rates.") +
+  #theme
+  theme_report()
+```
+
+
+```{r}
+graph_3_data <- Residential %>%
+  group_by(year) %>%
+  mutate(
+    rate_share  = `total rates` / sum(`total rates`),
+    value_share = QV / sum(QV),
+    ratio = rate_share / value_share   # 1 = perfectly proportional
+  ) %>%
+  ungroup() %>%
+  group_by(year, suburb) %>%
+  reframe(median_qi(ratio, .width = c(.25, .50, .80, .95)))
+
+
+
+
+graph_3_data %>%
+  ggplot(aes(x = year, y = y)) +
+  geom_lineribbon(aes(ymin = ymin, ymax = ymax),
+                  color = "#DC0100", alpha = 0.5, linewidth = 0.5) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "black") +
+  facet_wrap(~ suburb, ncol = 5) +
+  #scale arguments
+  scale_x_continuous(labels = function(x) x %% 100) +
+  scale_fill_manual(values = c("#C7E9F3", "#92B8D8", "#5C88BD","#2757A2"),
+                    name = "Quantiles") +
+  #labels
+  labs(title = "Rate payments are not evenly spread.",
+       subtitle = "Ribbons centred on 1 indicate proportional allocation",
+       x = "Year",
+       y = "Rate share / Value share (1 = proportional)",
+       caption = "Black dotted line is the proportion if every house paid the same share towards rates.") +
+  #theme
+  theme_report()
+```
 
