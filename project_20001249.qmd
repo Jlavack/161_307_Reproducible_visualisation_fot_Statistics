@@ -35,7 +35,7 @@ font_add_google("Inter", "Inter")
 showtext_auto()
 ```
 
-```{r data setup}
+```{r data setup, message=FALSE, warning=FALSE}
 #===== Read in data ======#
 # Unit_Rates <- read_excel("Draft Rates by property 26.27 - statistical purposes 1.xlsx", sheet = "Unit Rates")
 wdc_rates <- read_csv("wdc_rates_qv.csv") %>% 
@@ -47,7 +47,7 @@ nz <- read_sf("nz_sa3.gpkg")
 
 ta_nz <- nz %>% 
   group_by(territorial_authority, regional_council) %>%
-  summarise(geometry = st_union(GEOMETRY), .groups = 'drop')
+  summarise(geometry = st_union(geom), .groups = 'drop')
 
 whanganui <- nz %>% filter(territorial_authority == "Whanganui District") %>%
   mutate(sa3_name = recode(sa3_name,
@@ -228,7 +228,126 @@ theme_map <- function(base_size = 15) {
 }
 ```
 
-```{r graph 1}
+```{r graph 1 - map}
+#===== Map Graph function =====#
+map_graph <- function(data, fill, title) {
+data %>%
+  ggplot() +
+  geom_sf(mapping=aes(fill = .data[[fill]]), col = 'white', linewidth = 1, alpha = 0.5) +
+  coord_sf(xlim = w_bbox$x, ylim = w_bbox$y) + #need to change the rural district label to be visible
+  #annotation
+  geom_sf_label(mapping = aes(label = paste0(sa3_name, "\nn= ",as.character(count))), 
+               size = 3) + 
+  annotate("label", x = 1777000, y = 5584000,
+           label = paste0("Rural\nn=", rural_count), 
+           size = 3, fill = 'white') + #play with this to get the position right
+  #Scale arguments
+  scale_fill_gradientn(colors = whanganui_palette(3),
+                       limits = range(data[[fill]]),
+                       name = paste0(title, "\n(Thousands)"),
+                       labels = scales::label_number(scale = 1/1000)) +
+  #Labels
+  labs(title = "",
+       subtitle = '',
+       x = '',
+       y = '') +
+  #Theme
+  theme_map() +
+  theme(legend.position = c(0.0, 0.0),
+        legend.justification = c(0, 0),
+        legend.direction = "horizontal",
+        text = element_text(family = "Inter"))
+}
+
+#===== Wrangling =====#
+graph_3_data <- Rates %>% 
+  filter(year == 2026, Category == 'Residential') %>%
+  group_by(suburb) %>%
+  summarise(median_rates = median(`total rates`),
+            count = n(),
+            total = sum(`total rates`),
+            .groups = 'drop') 
+
+map_data <- whanganui %>%
+  left_join(graph_3_data, by = c('sa3_name' = "suburb")) 
+
+#get count of units in suburb for labels
+#this is separate because the labels wants to be out of the bounding box window
+rural_count <- graph_3_data %>%
+  filter(suburb == 'Rural') %>%
+  pull(count)
+
+#===== Median rates map =====#
+median_map <- map_graph(map_data, "median_rates", 'Median rates')
+
+```
+
+```{r graph 2 - dot and box}
+#===== wrangling =====#
+Total_rates_suburb <- Residential %>%
+  filter(year == 2026) %>%
+  group_by(suburb) %>% 
+  summarise(t = sum(`total rates`))
+
+graph_2_data <- Residential %>%
+  filter(year == 2026) %>% #avoid double counting
+  left_join(Total_rates_suburb %>% select(suburb, t), by = "suburb") %>%
+  mutate(suburb_label = factor(
+    paste0(suburb, "\nTotal rates = $", round(t / 1e6, 1), "M"),
+    levels = paste0(Suburb_rank$suburb, "\nTotal rates = $",
+                    round(Total_rates_suburb$t[match(Suburb_rank$suburb,
+                                                     Total_rates_suburb$suburb)] / 1e6, 1), "M")
+  ))
+
+max_row <- graph_2_data %>%
+  filter(year == 2026) %>%
+  slice_max(`total rates`, n = 1)
+
+#final dataset
+graph_2_data <- graph_2_data %>%
+  filter(!(`total rates` == max_row$`total rates`))
+
+#===== box and dots =====%
+box_suburbs <- graph_2_data %>%
+  mutate(suburb_label = forcats::fct_rev(as.factor(suburb_label))) %>% 
+  ggplot(aes(x=log(`total rates`), y = suburb_label, col= suburb)) +
+  geom_point(position = position_jitterdodge(jitter.width = 1), alpha = 0.3, size = 1, shape = 16) +
+  geom_boxplot(col = 'black', fill = NA, outlier.shape = NA, size = 0.7) +
+  #annotation specific code. The max rates unit
+  geom_point(data = max_row,
+             aes(x = log(`total rates`), y = suburb_label),
+             colour = "#687928", size = 3, inherit.aes = FALSE) +
+  annotate("point",
+           x = log(max_row$`total rates`),
+           y = max_row$suburb_label,
+           size = 8, colour = "black", shape = 1) +
+  #scales
+  scale_color_manual(values = whanganui_palette()) +
+  #labels
+  labs(title = "",
+    subtitle = "",
+       y = '', 
+       x = 'Log of total rates') +
+  #theme
+  theme_report() +
+  theme(legend.position = 'none',
+        panel.grid.major.y = element_blank())
+```
+
+```{r first graphic map and box, fig.width=15, fig.height=8}
+#|fig.width: 15
+#|fig.height: 8
+
+#===== graph =====#
+(box_suburbs | median_map) +
+  plot_annotation(
+    title = "Otamatea has the highest median rates. Gonville the highest total rates.",
+    subtitle = "Property 4849 in Gonville paid the highest rates: $99,549.64",
+    theme = theme(
+      plot.title = element_text(size = 30, family = "Inter"),
+      plot.subtitle = element_text(size = 20, family = "Inter",
+                                   margin = margin(b = -25)
+    )))
 
 ```
 
