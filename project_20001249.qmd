@@ -1,0 +1,37 @@
+---
+title: "Who pays the most rates?"
+author: "John Lavack, 20001249"
+format: pdf
+editor: visual
+format:
+  pdf:
+    toc: true
+    toc-depth: 3
+    papersize: a4
+    geometry:
+      - margin=1cm
+      - heightrounded
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r library setup}
+library(tidygraph)
+library(tidyverse)
+library(readxl)
+library(ggdist)
+library(maps)    
+library(sf)  
+library(patchwork)
+library(igraph)
+library(ggraph)
+library(showtext)
+font_add_google("Inter", "Inter")
+showtext_auto()
+```
+
+```{r data setup}
+
+```
