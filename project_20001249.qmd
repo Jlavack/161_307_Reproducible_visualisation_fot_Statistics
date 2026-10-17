@@ -4,19 +4,23 @@ author: "John Lavack, 20001249"
 editor: visual
 format:
   pdf:
-    toc: true
-    toc-depth: 3
+    toc: false
+    # toc-depth: 3
     papersize: a4
     geometry:
       - margin=1cm
       - heightrounded
+    mainfont: "Inter"
+    fontsize: 10pt
+    include-in-header:
+      text: \usepackage{wrapfig}
 execute:
   echo: false
   warning: false
   message: false
 ---
 
-```{r library setup}
+```{r library setup, message=FALSE, warning=FALSE}
 library(tidygraph)
 library(tidyverse)
 library(readxl)
@@ -32,5 +36,199 @@ showtext_auto()
 ```
 
 ```{r data setup}
+#===== Read in data ======#
+# Unit_Rates <- read_excel("Draft Rates by property 26.27 - statistical purposes 1.xlsx", sheet = "Unit Rates")
+wdc_rates <- read_csv("wdc_rates_qv.csv") %>% 
+  mutate(rate_yr = factor(rate_yr, levels = c("22_23", "23_24", "24_25", "25_26", "26_27"), ordered = TRUE))
+
+#===== map setup begin ======#
+nz <- read_sf("nz_sa3.gpkg")
+#read_sf("https://www.massey.ac.nz/~jcmarsha/data/nz_map/sa3_data.sqlite")
+
+ta_nz <- nz %>% 
+  group_by(territorial_authority, regional_council) %>%
+  summarise(geometry = st_union(GEOMETRY), .groups = 'drop')
+
+whanganui <- nz %>% filter(territorial_authority == "Whanganui District") %>%
+  mutate(sa3_name = recode(sa3_name,
+                           "Otamatea (Whanganui District)" = "Otamatea",
+                           "Whanganui District Rural" = "Rural",
+                           "Bastia-Durie Hill-Putiki" = "Bastia-Durie"))
+
+bbox <- st_bbox(whanganui)
+
+w_bbox <- list(x = c(1767500, 1779000), y=c(5574000, 5585000))
+#===== map setup finish ======#
+
+#===== Mapping Suburbs begin =====#
+St_John_Streets <- c('Acton Pl', 'Aiken Rd', 'Alexa Pl', "Brassey Rd","Bristow St", "Chittick Pl","Collier Pl", "Dickson Cres", "Halswell St","Halswell Street","Hillside Tce", "Kent Rd","Linda Pl", "Ngapuhi St", "Oakland Ave","Parkes Ave", "Parsons St", "Porritt St", "Rawhiti Pl", "Smart Tce", "St Leonard St","Taranaki St","Tarata St", "Tregarth St","Tulloch St", "Virginia Rd", 'Peakes Rd', 'Victoria Park', 'Virginia Lake (Rotokawau)')
+
+Otamatea_Streets <- c('Sewerage Pump Turere', 'Babbage Pl', 'Beachcroft', "Chelsea Cl", "Cotswolds Cl", "Diana Pl", "Eaton Cres", "Edith Collier Dr", "Edmonds Dr", "Goldsbury Pl", "Gumtree Rise", "Holdsworth Dr", "Kawau Pl", "Lancewood Pl", "Lithgow Dr", "Mannington Rd", "Montgomery Rd", "Norfolk Dr", "Otamatea Reserve", "Perrett Dr", "Pickwick Rd", "Rotokawau Dr", "Sandcroft Dr", "Sandy Lane", "St Johns Hts", "Suffolk Dr", "Tasman Views", "Tirimoana Pl", "Turere Pl","Virginia Hts", "Webster Pl", "Pukeko Drive", 'Tangaroa View', 'Middens Way')
+
+Springvale_streets <-c('Addenbrooke Tce')
+
+Whanganui_Centre_Streets <- c('Pitt St', 'Peat Pl', 'Peat St')
+
+#===== Mapping suburbs finish =====
+
+#===== Data wrangling begin =====
+streets <- wdc_rates %>% 
+  filter(suburb == "St Johns/Otamatea") %>% 
+  select(property_no, rate_yr, property_address, suburb) %>%
+  mutate(
+    house_num = as.integer(str_extract(property_address, "^\\s*(\\d+)")), 
+    street = str_remove(property_address, "~.*"),
+    street = str_remove(street, "-."),
+    street = str_remove(street, "^(?i:unit\\s+)?(?:[\\d/][\\d/A-Za-z]*\\s+)+"), #handles numbers and numbers like 9A,alos UNIT 6C / 59 and
+  ) %>%
+  mutate(
+    suburb = case_when(
+      #house numbers on great north road. great north road spans both. Lower number in St Johns up to 117. Then 119 and 121 are St Johns. 118, 120 and 122 onwards are otamtea
+      street == "Great North Rd" & is.na(house_num) ~ "St Johns Hill",
+      street == "Great North Rd" & house_num <= 117 ~ "St Johns Hill",
+      street == "Great North Rd" & house_num %in% c(119, 121) ~ "St Johns Hill",
+      street == "Great North Rd" & house_num >= 118 ~ "Otamatea (Whanganui District)",
+      #easier ones
+      street %in% St_John_Streets ~ "St Johns Hill",
+      street %in% Otamatea_Streets ~ "Otamatea (Whanganui District)",
+      street %in% Springvale_streets ~ "Springvale",
+      street %in% Whanganui_Centre_Streets ~ "Whanganui Centre",
+      TRUE ~ suburb
+    )
+  ) %>% select(property_no, rate_yr, suburb) #for left join
+
+#join tdatasets to get what I need. Remove nulls from data set.
+Rates <- wdc_rates %>% 
+  filter(!is.na(assessment_number)) %>%
+  left_join(
+    Data %>% select(property_no, SUIP), 
+    by = 'property_no') %>%
+  mutate( #mapping qv_category to res/com/farm for simpler groupings
+    Category = case_when(
+      `qv category` %in% c('Commercial', 'Industrial') ~ 'Commercial', 
+      `qv category` %in% c('Farming', 'Dairy', 'Pastoral', 'Forestry', 'Horticulture', 'Mining') ~ 'Farming',
+      `qv category` %in% c('Other', 'Specialist', 'Utility asset') ~ 'Specialist',
+      `qv category` %in% c('Residential', 'Lifestyle') ~ 'Residential',
+      TRUE ~ `qv category`),
+    SUIP = case_when(
+      `qv category` == 'Mining' ~ 1,
+      `qv category` == 'Residential' & is.na(SUIP) ~ 1,
+      TRUE ~ SUIP)
+    ) %>%
+  left_join(streets, by = c('property_no', 'rate_yr'), suffix = c("", "_new")) %>%
+  mutate(suburb = coalesce(suburb_new, suburb)) %>%
+  mutate(
+    suburb = recode(suburb,
+    "Bastia/Durie Hills Putiki" = "Bastia-Durie Hill-Putiki",
+    "Whanganui Central" = "Whanganui Centre",
+    "Whanganui Rural" = "Whanganui District Rural",)
+  ) %>%
+  mutate(year = case_when(
+    rate_yr == '22_23' ~ 2022,
+    rate_yr == '23_24' ~ 2023,
+    rate_yr == '24_25' ~ 2024,
+    rate_yr == '25_26' ~ 2025,
+    rate_yr == '26_27' ~ 2026,
+    TRUE ~ NA,
+    ),
+    QV = cv + lv + (cv - lv),
+    rate_per_m = `rate area (ha)` * 10000) %>%
+  mutate(Category = factor(Category, 
+                           levels = c('Specialist', 'Farming', 'Commercial', 'Residential'))) %>% #for consistent color coding
+  select(-suburb_new) %>%
+  mutate(suburb = recode(suburb, 
+                         "Otamatea (Whanganui District)" = "Otamatea",
+                         "Whanganui District Rural" = "Rural",
+                         "Bastia-Durie Hill-Putiki" = "Bastia-Durie"))
+
+#ranking for suburbs by median rates in 2026
+Suburb_rank <- Rates %>%
+  filter(Category == "Residential", year == 2026) %>%
+  group_by(suburb) %>% 
+  summarise(m = median(`total rates`)) %>%
+  mutate(rank = rank(-m, ties.method = "min")) %>%   
+  arrange(rank)    
+
+Residential <- Rates %>%
+  filter(Category == "Residential") %>%
+  mutate(suburb = factor(suburb, levels = Suburb_rank$suburb))
+
+#===== Data wrangling finish =====#
+```
+
+```{r theme setup}
+#===== Colour palette setup =====#
+whanganui_palette <- function(n = 13, which = NULL) {
+  pal <- c( #from inspecting the page elements of the Whanganui website, then color dropper picking from the coat of arms
+  "#2757A2", 
+  "#FEC30E",
+  "#AD1619",
+  "#008242", 
+  "#DCC0E2", 
+  "#C7E9F3",
+  "#687928",
+  "#D4582A",
+  "#8B514E",
+  "#93735B",
+  "#372502",
+  "#004925",
+  "#FEEAD7",
+  "black")
+  
+  if (!is.null(which)) {
+    pal[which]
+  }
+  else if (n <= length(pal)) {
+    pal[seq_len(n)]
+  } else {
+    grDevices::colorRampPalette(pal)(n)
+  }
+}
+
+#===== Custom theme =====#
+# font is Inter sans-serif, from website inspect elements on Whanganui council
+
+theme_report <- function(base_size = 15) {
+  theme_minimal(base_size = base_size, base_family = "Inter") +
+    theme(
+      # Titles
+      plot.title = element_text(size = 20, face = "bold", hjust = 0),
+      plot.subtitle = element_text(size = 18, hjust = 0,
+                                   margin = margin(b = 5)),
+      # Axes
+      axis.title = element_text(size = 18),
+      axis.text = element_text(size = 15),
+      # Facet strips
+      strip.text = element_text(face = "bold", size = 15),
+      # Legend
+      legend.position = "top",
+      legend.title = element_text(size = 15),
+      legend.text = element_text(size = 15),
+      # Caption
+      plot.caption = element_text(size =15)
+    )
+}
+
+theme_map <- function(base_size = 15) {
+  theme_minimal(base_size = base_size, base_family = "Inter") +
+    theme(
+      # panels
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      # Titles
+      plot.title = element_text(size = 20, face = "bold", hjust = 0),
+      plot.subtitle = element_text(size = 15, hjust = 0),
+      # Axes
+      axis.title =  element_blank(),
+      axis.text =  element_blank(),
+      # Legend
+      legend.title = element_text(size = 15),
+      legend.text = element_text(size = 15)
+    )
+}
+```
+
+```{r graph 1}
 
 ```
+
