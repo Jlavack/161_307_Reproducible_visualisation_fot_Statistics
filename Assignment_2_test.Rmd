@@ -1070,9 +1070,6 @@ graph_3_data <- Residential %>%
   group_by(year, suburb) %>%
   reframe(median_qi(ratio, .width = c(.25, .50, .80, .95)))
 
-
-
-
 graph_3_data %>%
   ggplot(aes(x = year, y = y)) +
   geom_lineribbon(aes(ymin = ymin, ymax = ymax),
@@ -1092,4 +1089,137 @@ graph_3_data %>%
   #theme
   theme_report()
 ```
+
+
+
+```{r}
+set.seed(21)
+
+prop <- 1000 / nrow(Residential %>% filter(year == 2026))
+
+street_data <- Residential %>% 
+  filter(year == 2026) %>%
+  select(property_no, assessment_number, property_address, suburb, QV, year, `total rates`) %>%
+  mutate(
+      street = str_remove(property_address, "~WHANGANUI.*$"),
+      street = str_remove(street, "^\\s*\\d+\\s*"),
+      assess_num = str_remove(assessment_number, "[A-Z]+$") |> as.numeric()
+  ) %>%
+  filter(!is.na(street)) %>%
+  group_by(suburb) %>%
+  slice_sample(prop = prop) %>%
+  ungroup() 
+
+# --- Within-street edges ---
+edges_within <- street_data %>%
+  select(assess_num, suburb, street, QV) %>%
+  rename(from = QV, from_id = assess_num, from_street = street) %>%
+  left_join(
+    street_data %>%
+      select(assess_num, suburb, street, QV) %>%
+      rename(to = QV, to_id = assess_num, to_street = street),
+    by = c(suburb = "suburb", from_street = "to_street"),  # <-- named join
+    relationship = "many-to-many"
+  ) %>%
+  filter(from_id != to_id, from_id < to_id) %>%
+  mutate(sim = 1 - abs(from - to) / max(from, to)) %>%
+  filter(sim >= 0.8) %>%
+  select(from_id, to_id, sim, suburb) %>%
+  mutate(edge_type = "within")
+
+# --- Cross-street edges (same suburb, different street) ---
+edges_between <- street_data %>%
+  select(assess_num, suburb, street, QV) %>%
+  rename(from = QV, from_id = assess_num, from_street = street) %>%
+  left_join(
+    street_data %>%
+      select(assess_num, suburb, street, QV) %>%
+      rename(to = QV, to_id = assess_num, to_street = street),
+    by = "suburb",              # <-- NOT c("suburb", "street")
+    relationship = "many-to-many"
+  ) %>%
+  filter(
+    from_street != to_street,
+    from_id != to_id,
+    from_id < to_id
+  ) %>%
+  mutate(sim = 1 - abs(from - to) / max(from, to)) %>%
+  filter(sim >= 0.8) %>%
+  select(from_id, to_id, sim, suburb) %>%
+  mutate(edge_type = "between")
+
+edges_within  <- edges_within  %>% 
+  group_by(from_id) %>% 
+  slice_max(sim, n = 3) %>% 
+  ungroup()
+
+edges_between <- edges_between %>% 
+  group_by(from_id) %>% 
+  slice_max(sim, n = 3) %>%
+  ungroup()
+
+#cross suburb edges
+edges_cross_suburb <- street_data %>%
+  select(assess_num, suburb, street, QV) %>%
+  rename(from = QV, from_id = assess_num, from_suburb = suburb) %>%
+  left_join(
+    street_data %>%
+      select(assess_num, suburb, street, QV) %>%
+      rename(to = QV, to_id = assess_num, to_suburb = suburb),
+    by = NULL,
+    relationship = "many-to-many"
+  ) %>%
+  filter(
+    from_suburb != to_suburb,
+    from_id < to_id
+  ) %>%
+  mutate(sim = 1 - abs(from - to) / max(from, to)) %>%
+  filter(sim >= 0.8) %>%
+  select(from_id, to_id, sim)
+
+if (nrow(edges_cross_suburb) > 500) {
+  edges_cross_suburb <- edges_cross_suburb %>% slice_sample(n = 500)
+}
+
+cat("Cross-suburb edges:", nrow(edges_cross_suburb), "\n")
+
+# --- Combine ---
+# all_edges <- bind_rows(edges_within, edges_between)
+all_edges <- bind_rows(
+  edges_within  %>% mutate(edge_type = "within"),
+  edges_between %>% mutate(edge_type = "between"),
+  edges_cross_suburb %>% mutate(edge_type = "cross")
+)
+
+g2 <- graph_from_data_frame(
+  all_edges,
+  vertices = street_data %>% distinct(assess_num, suburb) %>% set_names(c("name", "suburb")),
+  directed = FALSE
+)
+
+# # Attach edge_type as a vertex-independent edge attribute
+E(g2)$edge_type <- all_edges$edge_type
+
+ggraph(g2, layout = "fr") +
+  geom_edge_link(aes(colour = edge_type)) +
+  scale_colour_manual(
+    values = c(within = "steelblue", between = "purple", cross = "firebrick"),
+    breaks = c("within", "cross"),
+    labels = c("within" = "Same suburb", "cross" = "Cross-suburb")
+  ) +
+  geom_node_point(aes(fill = factor(suburb)), shape=21, size = 3, alpha = 0.7) +
+  #scale
+  scale_fill_manual(values = whanganui_palette(10)) +
+  #labs
+  labs(title = "Cross-suburb edges (red) vs. same-suburb (grey)",
+       subtitle = paste0(nrow(edges_cross_suburb), " cross-suburb | ",
+                         nrow(edges_within), " within-street | ",
+                         nrow(edges_between), " cross-street"),
+       colour = "edge") +
+  #theme
+  theme_void(base_family = "Inter") +
+  theme(legend.position = "right", plot.title = element_text(size = 10), plot.subtitle = element_text(size = 8))
+```
+
+
 
