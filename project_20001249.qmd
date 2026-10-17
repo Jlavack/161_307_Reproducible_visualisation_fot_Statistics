@@ -1,7 +1,6 @@
 ---
 title: "Who pays the most rates?"
 author: "John Lavack, 20001249"
-format: pdf
 editor: visual
 format:
   pdf:
