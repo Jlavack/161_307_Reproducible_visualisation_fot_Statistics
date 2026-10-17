@@ -1200,26 +1200,38 @@ g2 <- graph_from_data_frame(
 # # Attach edge_type as a vertex-independent edge attribute
 E(g2)$edge_type <- all_edges$edge_type
 
+suburbs <- as.character(sort(unique(street_data$suburb)))
+
 ggraph(g2, layout = "fr") +
-  geom_edge_link(aes(colour = edge_type)) +
+  geom_edge_link(aes(colour = case_when(
+    edge_type == "cross" ~ "Cross-suburb",
+    TRUE ~ "Same suburb"
+  )), show.legend = FALSE) +
+  geom_node_point(aes(colour = as.character(suburb)), size = 3, alpha = 0.7) +
   scale_colour_manual(
-    values = c(within = "steelblue", between = "purple", cross = "firebrick"),
-    breaks = c("within", "cross"),
-    labels = c("within" = "Same suburb", "cross" = "Cross-suburb")
+    values = c(
+      setNames(whanganui_palette(10), suburbs)
+    ),
+    name = ''
   ) +
-  geom_node_point(aes(fill = factor(suburb)), shape=21, size = 3, alpha = 0.7) +
-  #scale
-  scale_fill_manual(values = whanganui_palette(10)) +
   #labs
-  labs(title = "Cross-suburb edges (red) vs. same-suburb (grey)",
-       subtitle = paste0(nrow(edges_cross_suburb), " cross-suburb | ",
-                         nrow(edges_within), " within-street | ",
-                         nrow(edges_between), " cross-street"),
-       colour = "edge") +
+  labs(
+    title    = "Cross-suburb edges (red) vs. same-suburb (blue)",
+    subtitle = paste0(nrow(edges_cross_suburb), " cross-suburb | ",
+                      nrow(edges_within), " within-street | ",
+                      nrow(edges_between), " cross-street"),
+  ) +
   #theme
   theme_void(base_family = "Inter") +
-  theme(legend.position = "right", plot.title = element_text(size = 10), plot.subtitle = element_text(size = 8))
+  theme(legend.position = "right",
+        plot.title = element_text(size = 10),
+        plot.subtitle = element_text(size = 8))
 ```
+
+
+
+
+
 
 
 
