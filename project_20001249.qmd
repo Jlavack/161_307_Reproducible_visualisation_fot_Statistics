@@ -48,6 +48,20 @@ showtext_auto()
 wdc_rates <- read_csv("wdc_rates_qv.csv") %>% 
   mutate(rate_yr = factor(rate_yr, levels = c("22_23", "23_24", "24_25", "25_26", "26_27"), ordered = TRUE))
 
+Data <- read_excel("Draft Rates by property 26.27 - statistical purposes 1.xlsx", sheet = "Data", skip = 2) %>%
+  drop_na(property_no)
+
+#===== fixed rates calc =====#
+Fixed_rate_components <- c("CBD","ESC","ESF","ESR","KS","MAW","RRC","RRF","RRR","SMO",
+                     "SMOH","UAGC...38","WC","WCM","WS","WSH","WSRE","WWS")
+
+Fixed_rates <- Data %>%
+  select(property_no, all_of(Fixed_rate_components)) %>%
+  mutate(across(all_of(Fixed_rate_components), ~ ifelse(is.na(.x), 0, .x)),
+         fixed_total = rowSums(pick(all_of(Fixed_rate_components)))) %>%
+  select(property_no, fixed_total)
+
+
 #===== map setup begin ======#
 nz <- read_sf("nz_sa3.gpkg")
 #read_sf("https://www.massey.ac.nz/~jcmarsha/data/nz_map/sa3_data.sqlite")
@@ -365,6 +379,16 @@ Rates are not evenly distributed, and neither are people.
 
 ```{r graph 3 - proportion}
 #==== Wrangling ====#
+#fixed rate part
+fixed_rates_summary <- Residential %>% 
+  filter(year == 2026) %>%
+  left_join(Fixed_rates, by = "property_no") %>%
+  select(property_no, suburb, fixed_total) %>%
+  #use mean do capture effect of outliers. 
+  group_by(suburb) %>%
+  summarise(mean_fixed_total = round(median(fixed_total),0),
+            n = n())
+
 graph_3_data <- Residential %>%
   group_by(year) %>%
   mutate(
@@ -374,7 +398,16 @@ graph_3_data <- Residential %>%
   ) %>%
   ungroup() %>%
   group_by(year, suburb) %>%
-  reframe(median_qi(ratio, .width = c(.25, .50, .80, .95)))
+  reframe(median_qi(ratio, .width = c(.25, .50, .80, .95))) %>%
+  ungroup() %>%
+  left_join(fixed_rates_summary, by = "suburb") %>%
+  mutate(suburb_label = factor(
+  paste0(suburb, "\n Median fixed: $ ", mean_fixed_total),
+  levels = paste0(levels(suburb), "\n Median fixed: $ ", 
+                  fixed_rates_summary$mean_fixed_total[match(levels(suburb), fixed_rates_summary$suburb)])
+  ))
+
+
 
 #===== Plot =====#
 proportion_graph <- graph_3_data %>%
@@ -382,14 +415,14 @@ proportion_graph <- graph_3_data %>%
   geom_lineribbon(aes(ymin = ymin, ymax = ymax),
                   color = "#DC0100", alpha = 0.5, linewidth = 0.5) +
   geom_hline(yintercept = 1, linetype = "dashed", color = "black") +
-  facet_wrap(~ suburb, ncol = 5) +
+  facet_wrap(~ suburb_label, ncol = 5) +
   #scale arguments
   scale_x_continuous(labels = function(x) x %% 100) +
   scale_fill_manual(values = c("#C7E9F3", "#92B8D8", "#5C88BD","#2757A2"),
                     name = "Quantiles") +
   #labels
   labs(title = "Rate payments are not evenly spread.",
-       subtitle = "Ribbons centred on 1 indicate proportional allocation",
+       subtitle = "Ribbons centred on 1 indicate proportional allocation. Expected fixed rate per suburb: $2,063.",
        x = "Year",
        y = "Rate share / Value share (1 = proportional)",
        caption = "Black dotted line is the proportion if every house paid the same share towards rates.") +
@@ -401,12 +434,16 @@ proportion_graph <- graph_3_data %>%
 
 If rates were allocated purely by property value — "each household is rated according to the value of their property" (Whanganui City Council, 2026) — then each suburb's share of the total rate bill should equal its share of total QV. The proportional plot tests this: a suburb on the dashed line is paying exactly its QV-proportional share.
 
-It's not that simple, because rates are a combination of a fixed per-property charge (the Universal Annual General Charge, or UAGC) and a proportional charge linked to QV (calculate.co.nz, 2026). The UAGC is the same dollar amount regardless of property value, so it weighs more heavily on lower-QV properties and less on higher-QV ones. This single mechanism explains most of the deviation from the proportional line:
+It's not that simple, because rates are a combination of a fixed per-property charge and a proportional charge linked to QV (calculate.co.nz, 2026). The fixed value is the same dollar amount per SUIP regardless of property value, $2,063, so it weighs more heavily on lower-QV properties and less on higher-QV ones. This single mechanism explains most of the deviation from the proportional line:
 
 * St Johns Hill, Springvale, Bastia-Durie sit on or near the line — their QV and density happen to balance out.
-* Otamatea sits slightly below. Its high median QV means the UAGC is a small fraction of each bill, pulling the suburb below the line. In absolute terms it pays the most; proportionally, it's underpaying.
-* Rural sits well below. With 2,701 units (second most in the city) and large land holdings (recall the map above), the UAGC is a tiny fraction of each bill. The suburb pays roughly half of what a pure QV-proportional system would predict.
-* Whanganui East, Centre, Aramoho, Gonville, Castlecliff sit above. Their moderate QV means the UAGC is a larger fraction of each bill, pushing them above the line. Castlecliff has few high outliers and still sits above, ruling out outliers as the explanation.
+* Otamatea sits slightly below. Its high median QV means the fixed amount is a small fraction of each bill ($2,010), pulling the suburb below the line. In absolute terms it pays the most; proportionally, it's underpaying.
+* Rural sits well below. With 2,701 units (second most in the city) and large land holdings (recall the map above), the fixed amount is a tiny fraction of each bill, only $1,021, about half of every other suburb. Rural also pays roughly half of what a pure QV-proportional system would predict.
+* Whanganui East, Centre, Aramoho, Gonville, Castlecliff sit above. Their moderate QV means the fixed portion is a larger fraction of each bill, pushing them above the line. Castlecliff has few high outliers and still sits above, ruling out outliers as the explanation for proportionality. However, due to these outliers, their fixed portions are higher than the expected amount. 
+
+```{=latex}
+{\tiny \textit{Note: the mean fixed rate is shown per suburb, as this shows the impact of outliers}}
+```
 
 So paying the most in dollars is not the same as paying disproportionately. Otamatea's high rates are a direct consequence of its high property values. The suburbs that are overpaying relative to their QV share are the mid-value, higher-density ones — a density penalty. 
 
@@ -585,7 +622,7 @@ QV_cluster
 
 The rate bill is shaped by two distinct mechanisms:
 
-* A density premium (UAGC effect). Fixed per-property charges are a larger fraction of the bill in moderate-QV, high-density suburbs and a smaller fraction in high-QV, low-density areas (rural). This pushes dense suburbs above the proportional line and rural below it.
+* A density premium (fixed amount effect). Fixed per-property charges are a larger fraction of the bill in moderate-QV, high-density suburbs and a smaller fraction in high-QV, low-density areas (rural). This pushes dense suburbs above the proportional line and rural below it.
 
 * A desirability premium (QV effect). QV is set at the suburb level by the local market. Suburbs in higher demand have higher QV's across the board, which raises the proportional component of every rate bill in that suburb.
 
@@ -594,9 +631,9 @@ Taken together they mean the "each household pays according to value" statement 
 
 # So, are rates fair?
 
-That depends on what "fair" means. If fairness means "your share of the bill equals your share of property value," then no — the UAGC alone breaks that.  
+That depends on what "fair" means. If fairness means "your share of the bill equals your share of property value," then no — the fixed portion alone breaks that.  
 If fairness means "people in the same suburb pay the same rate," then, after accounting for outliers, yes.   
-If fairness means "you pay for what you use," then the UAGC is regressive and the QV component is not.  
+If fairness means "you pay for what you use," then the fixed amount is regressive and the QV component is not.  
 
 The data doesn't answer the question. It shows the mechanism. Whether the mechanism is fair is a question for the ratepayers.
 
