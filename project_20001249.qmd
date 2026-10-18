@@ -1,5 +1,5 @@
 ---
-title: "Who pays the most rates?"
+title: "Are rates fair?"
 author: "John Lavack, 20001249"
 date: "2026-10-18"
 editor: visual
@@ -12,7 +12,7 @@ format:
       - margin=1cm
       - heightrounded
     mainfont: "Inter"
-    fontsize: 10pt
+    fontsize: 8pt
     include-in-header:
       text: \usepackage{wrapfig}
 execute:
@@ -20,6 +20,8 @@ execute:
   warning: false
   message: false
 ---
+
+Residential rate payers make up 88.4% of rateable units and 77% of total rate income. The majority of the rate burden falls on them. Which raises discussion around whether rates are 'fair'. For this analysis residential rates refers to both residential and lifestyle QV categories.
 
 ```{=latex}
 {\tiny \textit{The following analysis uses Whanganui Council rates from 2022 to 2026 only. Total rates are analyses, these are comprised of fixed and variable portions. For the purpose of this analysis separating the fixed and variable portions was not necessary as the component breakdown per council service was not the subject.}}
@@ -189,20 +191,20 @@ theme_report <- function(base_size = 10) {
   theme_minimal(base_size = base_size, base_family = "Inter") +
     theme(
       # Titles
-      plot.title = element_text(size = 15, face = "bold", hjust = 0),
-      plot.subtitle = element_text(size = 12, hjust = 0,
+      plot.title = element_text(size = 10, face = "bold", hjust = 0),
+      plot.subtitle = element_text(size = 8, hjust = 0,
                                    margin = margin(b = 5)),
       # Axes
-      axis.title = element_text(size = 10),
-      axis.text = element_text(size = 8),
+      axis.title = element_text(size = 8),
+      axis.text = element_text(size = 6),
       # Facet strips
-      strip.text = element_text(face = "bold", size = 10),
+      strip.text = element_text(face = "bold", size = 8),
       # Legend
       legend.position = "top",
-      legend.title = element_text(size = 10),
-      legend.text = element_text(size = 8),
+      legend.title = element_text(size = 8),
+      legend.text = element_text(size = 6),
       # Caption
-      plot.caption = element_text(size =8)
+      plot.caption = element_text(size =6)
     )
 }
 
@@ -213,14 +215,14 @@ theme_map <- function(base_size = 10) {
       panel.grid.major = element_blank(),
       panel.grid.minor = element_blank(),
       # Titles
-      plot.title = element_text(size = 15, face = "bold", hjust = 0),
-      plot.subtitle = element_text(size = 12, hjust = 0),
+      plot.title = element_text(size = 10, face = "bold", hjust = 0),
+      plot.subtitle = element_text(size = 8, hjust = 0),
       # Axes
       axis.title =  element_blank(),
       axis.text =  element_blank(),
       # Legend
-      legend.title = element_text(size = 10),
-      legend.text = element_text(size = 8)
+      legend.title = element_text(size = 6),
+      legend.text = element_text(size = 4)
     )
 }
 ```
@@ -255,6 +257,7 @@ data %>%
         legend.justification = c(0, 0),
         legend.direction = "horizontal",
         legend.title.position = "top",
+        legend.key.width = grid::unit(0.2, "in"),
         text = element_text(family = "Inter", size = 5))
 }
 
@@ -311,7 +314,7 @@ box_suburbs <- graph_2_data %>%
   mutate(suburb_label = forcats::fct_rev(as.factor(suburb_label))) %>% 
   ggplot(aes(x=log(`total rates`), y = suburb_label, col= suburb)) +
   geom_point(position = position_jitterdodge(jitter.width = 1), alpha = 0.3, size = 1, shape = 16) +
-  geom_boxplot(col = 'black', fill = NA, outlier.shape = NA, size = 0.7) +
+  geom_boxplot(col = 'black', fill = NA, outlier.shape = NA, size = 0.5) +
   #annotation specific code. The max rates unit
   geom_point(data = max_row,
              aes(x = log(`total rates`), y = suburb_label),
@@ -333,13 +336,17 @@ box_suburbs <- graph_2_data %>%
         panel.grid.major.y = element_blank())
 ```
 
-Residential rate payers make up 88.4% of rateable units and 77% of total rate income. The majority of the rate burden falls on them. Which raises discussion around the size of the rates bill, who pays more and whether rates are 'fair'. For this analysis residential rates refers to both residential and lifestyle QV categories.
+Let's start with...
 
-The answer to who pays the most residential rates is not a simple one. Otamatea rate payers pay the highest median rates in 2026 at \$5,213. As a group they paid only \$3 million. While the owner of property 4849 in Gonville paid the most rates individually. Rates are not evenly spread and nor are people. Suburbs like Otamatea have few residents, while ones like Gonville (with median rates of \$3,928) have many. More residents mean more chance for outliers, hence the box pot below shows the logarithm of the rates in order to show the distribution of rates within each suburb neatly. It is also interesting to note that suburb size does not directly lead to more rates, because housing density is not a factor of suburb size.
+# Who pays the most?
 
-```{r graph 1 and 2 output, fig.width=11, fig.height=6}
-#|fig.width: 11
-#|fig.height: 6
+The answer depends on the unit of analysis. Individually, the owner of property 4849 in Gonville paid the most rates in 2026. By suburb, Otamatea ratepayers pay the highest median (\$5,213) but, as a group, contributed the least in total (\$3.1 million) — there only 593 of htem. Gonville, with a lower median ($3,928), has the most ratepayers (2,701) and contributes more in aggregate. Suburb size doesn't map directly to total rates because housing density is independent of area. The box plot below shows the log of rates to accommodate the many outliers within each suburb. 
+
+Rates are not evenly distributed, and neither are people.
+
+```{r graph 1 and 2 output, fig.width=8, fig.height=4}
+#|fig.width: 8
+#|fig.height: 4
 
 #===== graph =====#
 (box_suburbs | median_map) +
@@ -347,8 +354,10 @@ The answer to who pays the most residential rates is not a simple one. Otamatea 
     title = "Otamatea has the highest median rates. Gonville the highest total rates.",
     subtitle = "Property 4849 in Gonville paid the highest rates: $99,549.64",
     theme = theme(
-      plot.title = element_text(size = 20, family = "Inter", face = "bold"),
-      plot.subtitle = element_text(size = 18, family = "Inter",
+      plot.margin = margin(0, 0, 0, 0),
+      plot.title = element_text(size = 10, family = "Inter", face = "bold",
+                                margin = margin(t = 0, b = 0)),
+      plot.subtitle = element_text(size = 8, family = "Inter",
                                    margin = margin(b = -25)
     )))
 
@@ -356,26 +365,23 @@ The answer to who pays the most residential rates is not a simple one. Otamatea 
 
 ```{r graph 3 - proportion}
 #==== Wrangling ====#
-equal_prop <- Residential %>%
-  group_by(year) %>%
-  summarise(prop = 100 / n(), .groups = "drop") %>%
-  tidyr::crossing(suburb = unique(Residential$suburb))
-
-#prop data
 graph_3_data <- Residential %>%
   group_by(year) %>%
-  mutate(prop = 100 * `total rates` / sum(`total rates`)) %>%
+  mutate(
+    rate_share  = `total rates` / sum(`total rates`),
+    value_share = QV / sum(QV),
+    ratio = rate_share / value_share   # 1 = perfectly proportional
+  ) %>%
   ungroup() %>%
   group_by(year, suburb) %>%
-  reframe(median_qi(prop, .width = c(.25, .50, .80, .95)))
+  reframe(median_qi(ratio, .width = c(.25, .50, .80, .95)))
 
-#==== Graph ====#
+#===== Plot =====#
 proportion_graph <- graph_3_data %>%
   ggplot(aes(x = year, y = y)) +
   geom_lineribbon(aes(ymin = ymin, ymax = ymax),
-                  color = "#DC0100", alpha = 0.5, linewidth = 0.7) +
-  geom_line(data = equal_prop, aes(x = year, y = prop),
-            col = "black", linetype = "dashed", linewidth = 0.7) +
+                  color = "#DC0100", alpha = 0.5, linewidth = 0.5) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "black") +
   facet_wrap(~ suburb, ncol = 5) +
   #scale arguments
   scale_x_continuous(labels = function(x) x %% 100) +
@@ -383,86 +389,36 @@ proportion_graph <- graph_3_data %>%
                     name = "Quantiles") +
   #labels
   labs(title = "Rate payments are not evenly spread.",
-       subtitle = "Otamatea rate payers pay proportionally the most rates",
+       subtitle = "Ribbons centred on 1 indicate proportional allocation",
        x = "Year",
-       y = "Proportion of rates paid per unit",
+       y = "Rate share / Value share (1 = proportional)",
        caption = "Black dotted line is the proportion if every house paid the same share towards rates.") +
   #theme
   theme_report()
 ```
 
-So, if the answer to who pays the most isn't straight forward, can we at least understand if it is fair? Presumably, rates are fairly allocated because all rate payers pitch in for all the facilities.
+# Are rates proportional at least?
 
-This is not the case. Generally speaking, Otamatea and St Johns Hill pay proportionally more than other suburbs in rates (0.007 median per unit). If every suburb were even, then the median proportion (red line) would be near the black dotted line of a 'perfectly proportioned rate payment'. Medians are idealised, so we could say that we may expect the 25% or maybe even 50% quantiles to contain the black dotted line. This is the case for suburbs Springvale, Bastia-Durie, Whanganui East and Centre, Aramohoro and Gonville. While rural pays only a median of 0.004 per unit.
+If rates were allocated purely by property value — "each household is rated according to the value of their property" (Whanganui City Council, 2026) — then each suburb's share of the total rate bill should equal its share of total QV. The proportional plot tests this: a suburb on the dashed line is paying exactly its QV-proportional share.
 
-So rates are not evenly spread, nor have they been since 2022. Some people pay more for facilities than everyone else.
+It's not that simple, because rates are a combination of a fixed per-property charge (the Universal Annual General Charge, or UAGC) and a proportional charge linked to QV (calculate.co.nz, 2026). The UAGC is the same dollar amount regardless of property value, so it weighs more heavily on lower-QV properties and less on higher-QV ones. This single mechanism explains most of the deviation from the proportional line:
 
-```{r graph 3 output, fig.width=8, fig.height=5}
+* St Johns Hill, Springvale, Bastia-Durie sit on or near the line — their QV and density happen to balance out.
+* Otamatea sits slightly below. Its high median QV means the UAGC is a small fraction of each bill, pulling the suburb below the line. In absolute terms it pays the most; proportionally, it's underpaying.
+* Rural sits well below. With 2,701 units (second most in the city) and large land holdings (recall the map above), the UAGC is a tiny fraction of each bill. The suburb pays roughly half of what a pure QV-proportional system would predict.
+* Whanganui East, Centre, Aramoho, Gonville, Castlecliff sit above. Their moderate QV means the UAGC is a larger fraction of each bill, pushing them above the line. Castlecliff has few high outliers and still sits above, ruling out outliers as the explanation.
+
+So paying the most in dollars is not the same as paying disproportionately. Otamatea's high rates are a direct consequence of its high property values. The suburbs that are overpaying relative to their QV share are the mid-value, higher-density ones — a density penalty. 
+
+
+```{r graph 3 output, fig.width=8, fig.height=4}
 #|fig.width: 8
-#|fig.height: 5
+#|fig.height: 4
 
 proportion_graph
 ```
 
-```{r graph 4 - area}
-#===== Wrangling =====#
-residential_area <- Residential %>% 
-  filter(!is.na(`rate area (ha)`)) 
-
-Rates_per_meter <- residential_area %>% 
-  summarise(total_rates = sum(`total rates`), 
-            total_area = sum(rate_per_m),
-            rate_per_ha = total_rates / total_area) %>%
-  pull()
-
-suburb_area <- residential_area %>% 
-  group_by(suburb) %>%
-  summarise(median = round(median(rate_per_m), 0)) 
-
-graph_4_data <- residential_area %>%
-  mutate(rates_per_area = `total rates` / rate_per_m) %>%
-  group_by(suburb, year) %>%
-  reframe(median_qi(rates_per_area, .width = c(.25, .50, .80, .95))) %>%
-  left_join(suburb_area %>% select(suburb, median), by = "suburb") %>%
-  mutate(suburb_label = factor(
-    paste0(suburb, "\nmedian area = ", median),
-    levels = paste0(Suburb_rank$suburb, "\nmedian area = ", 
-                    suburb_area$median[match(Suburb_rank$suburb, suburb_area$suburb)])
-  ))
-
-#===== Graph =====#
-area_graph <- graph_4_data %>%
-  ggplot(aes(x = year, y = y)) +
-  geom_lineribbon(aes(ymin = ymin, ymax = ymax),
-                  color = "#DC0100", alpha = 0.5, linewidth = 0.7) +
-  geom_hline(aes(yintercept = Rates_per_meter), col = "black",
-             linetype = 'dashed') +
-  facet_wrap(~ suburb_label, ncol = 5) +  
-  #scale arguments
-  scale_x_continuous(labels = function(x) x %% 100) +
-  scale_y_continuous(labels = scales::label_number(accuracy = 1)) +
-  scale_fill_manual(values = c("#C7E9F3", "#92B8D8", "#5C88BD","#2757A2"),
-                    name = "Quantiles") +
-  #labels
-  labs(title = "Rates are not obviosuly linked to area.",
-       subtitle = "The largest areas pay the least per meter squared. ",
-       x = "Year",
-       y = "Rates per m² (NZD)",
-       caption = "Black dotted line is the average rates per meter squared across all Whanganui.") +
-  #themes
-  theme_report() 
-```
-
-If rate payers are not evenly paying for rates, is there some reason that may account for it? Do rate payers who have larger properties pay more, and is that why? Again, no. If this were the case we'd expect that suburbs with larger median areas show higher median lines than other suburbs. Rural properties get the lowest rate cost per meter squared (\$0.31), below the average rates per meter squared. Only the 80% quantile and higher pay this and above. Most other suburbs pay a median of \$5 - \$6 per meter in rates, while Whanganui Centre pays a median of \$7 - \$8 per meter. However, there is significant overlap in the quantises across all suburbs. Clearly, land is not uniformly priced nor distributed across suburbs, which can be obscured in aggregate analyses like this one.
-
-```{r graph 4 output, fig.width= 8, fig.height= 5}
-#|fig.width: 8
-#|fig.height: 5
-
-area_graph
-```
-
-```{r graph 5 - QV network}
+```{r graph 5 - QV network, message=FALSE}
 #===== Wrangling =====#
 set.seed(21)
 
@@ -482,57 +438,141 @@ street_data <- Residential %>%
   ungroup() 
 
 # Build edges using assessment_no as the ID. It it a proxy for closeness that is easier to work with. I looked through the data and that is what I saw. Streets were alphabetically arranged, by street number within suburbs with the property number indicating closeness. 
-street_edges <- street_data %>%
-  select(property_address, suburb, street, QV, assess_num) %>%
-  rename(from = QV, from_id = assess_num) %>%
+# I will calculate simlirity as price of point of origin, to the nearby units, normalised so 1 = the same QV, and 0 = most different. 
+
+#===== Within-street edges =====#
+#same street, same suburb. If high then closer houses have similar QV
+edges_within <- street_data %>%
+  select(assess_num, suburb, street, QV) %>%
+  rename(from = QV, from_id = assess_num, from_street = street) %>%
   left_join(
     street_data %>%
-      select(property_address, suburb, street, QV, assess_num) %>%
-      rename(to = QV, to_id = assess_num),
-    by = c("suburb", "street"),
+      select(assess_num, suburb, street, QV) %>%
+      rename(to = QV, to_id = assess_num, to_street = street),
+    by = c(suburb = "suburb", from_street = "to_street"),  
+    relationship = "many-to-many"
+  ) %>%
+  filter(from_id != to_id, from_id < to_id) %>%
+  mutate(sim = 1 - abs(from - to) / max(from, to)) %>%
+  filter(sim >= 0.8) %>%
+  select(from_id, to_id, sim, suburb) %>%
+  mutate(edge_type = "within")
+
+#cap for render speed:
+edges_within  <- edges_within  %>% 
+  group_by(from_id) %>% 
+  slice_max(sim, n = 3) %>% 
+  ungroup()
+
+#===== Between: Cross-street edges (same suburb, different street)=====#
+#same suburb, different streets. If high then same as within set. If market conditions drive QV, tehn this should be lower htan within, but still high - desirable suburbs and all that. 
+edges_between <- street_data %>%
+  select(assess_num, suburb, street, QV) %>%
+  rename(from = QV, from_id = assess_num, from_street = street) %>%
+  left_join(
+    street_data %>%
+      select(assess_num, suburb, street, QV) %>%
+      rename(to = QV, to_id = assess_num, to_street = street),
+    by = "suburb",           
     relationship = "many-to-many"
   ) %>%
   filter(
+    from_street != to_street,
     from_id != to_id,
-    #set the number of neighbours used... assessment ids are proxy for neighbouring units, so larger mean more nieghbours, smaller value here means fewer. 
-    abs(from_id - to_id) <= 1000000000, #10 digits is max
     from_id < to_id
   ) %>%
-  #price of point of origin, to the nearby units, normalised so 1 = the same QV, and 0 = most different. 
   mutate(sim = 1 - abs(from - to) / max(from, to)) %>%
-  #toggle similarity level. 
-  filter(sim >= 0.5) %>%
-  select(from_id, to_id, sim, suburb)
+  filter(sim >= 0.8) %>%
+  select(from_id, to_id, sim, suburb) %>%
+  mutate(edge_type = "between")
 
-# Build graph — vertices are property_no (unique)
+#cap for render speed
+edges_between <- edges_between %>% 
+  group_by(from_id) %>% 
+  slice_max(sim, n = 3) %>%
+  ungroup()
+
+#===== cross suburb edges =====#
+#different suburbs. If high then desibability of market is not real. If low, then local market doesn't cross subrub lines. 
+edges_cross_suburb <- street_data %>%
+  select(assess_num, suburb, street, QV) %>%
+  rename(from = QV, from_id = assess_num, from_suburb = suburb) %>%
+  left_join(
+    street_data %>%
+      select(assess_num, suburb, street, QV) %>%
+      rename(to = QV, to_id = assess_num, to_suburb = suburb),
+    by = NULL,
+    relationship = "many-to-many"
+  ) %>%
+  filter(
+    from_suburb != to_suburb,
+    from_id < to_id
+  ) %>%
+  mutate(sim = 1 - abs(from - to) / max(from, to)) %>%
+  filter(sim >= 0.8) %>%
+  select(from_id, to_id, sim)
+
+if (nrow(edges_cross_suburb) > 500) {
+  edges_cross_suburb <- edges_cross_suburb %>% slice_sample(n = 500)
+}
+
+#===== Combine =====#
+all_edges <- bind_rows(
+  edges_within  %>% mutate(edge_type = "within"),
+  edges_between %>% mutate(edge_type = "between"),
+  edges_cross_suburb %>% mutate(edge_type = "cross")
+)
+
+#===== Build graph =====#
+
 g <- graph_from_data_frame(
-  street_edges %>% select(from_id, to_id, sim, suburb),
-  vertices = street_data %>%
-    distinct(assess_num, suburb) %>%
-    set_names(c("name", "suburb")),
+  all_edges,
+  vertices = street_data %>% distinct(assess_num, suburb) %>% set_names(c("name", "suburb")),
   directed = FALSE
 )
 
+# # Attach edge_type as a vertex-independent edge attribute
+E(g)$edge_type <- all_edges$edge_type
+
+suburbs <- as.character(sort(unique(street_data$suburb)))
+
 #===== Plot =====#
 QV_cluster <- ggraph(g, layout = "fr") +
-  geom_edge_link(aes(edge_width = sim), alpha = 0.6, colour = "grey40") +
-  geom_node_point(aes(colour = factor(suburb)), size = 3, alpha = 0.7) +
-  scale_edge_width(range = c(0.2, 1), guide = "none") +
-  scale_color_manual(values = whanganui_palette(10)) +  
-  labs(title = "Similar location, similar QV.",
-       subtitle = "Rateable units cluster within suburb streets, not between suburbs.",
-       colour = "Suburb",
-       caption = "network made with representative sample of 997 units.") +
+  geom_edge_link(aes(colour = case_when(
+    edge_type == "cross" ~ "Cross-suburb",
+    TRUE ~ "Same suburb"
+  )), show.legend = FALSE) +
+  geom_node_point(aes(colour = as.character(suburb)), size = 3, alpha = 0.7) +
+  scale_colour_manual(
+    values = c(
+      setNames(whanganui_palette(10), suburbs)
+    ),
+    name = ''
+  ) +
+  #labs
+  labs(
+    title = "Similar suburb, similar QV.",
+    subtitle = "Cross-suburb edges (red) vs. same-suburb (blue)",
+    caption = paste0(nrow(edges_cross_suburb), " cross-suburb | ",
+                      nrow(edges_within), " within-street | ",
+                      nrow(edges_between), " cross-street"),
+  ) +
+  #theme
   theme_void(base_family = "Inter") +
   theme(legend.position = "right",
-        plot.title = element_text(size = 20),
-        plot.subtitle = element_text(size = 15))
+        plot.title = element_text(size = 10, face = "bold"),
+        plot.subtitle = element_text(size = 8),
+        plot.caption = element_text(size = 8))
 
 ```
 
-So, if there isn't a clear reason for rate differences accountable in the physical world, what may account for this behaviour? Rates are linked to QV valuations. QV valuations use sales data and consents (assumed improvement) calculate a home's value, which is used to adjust rates. What this means is that rates are, to some degree, influenced by how desirable a house is. If this were true, then considering what we know so far about suburb rates, then we would expect that houses closer together would have similar QV values (and hence rates) and that this would be represented within streets and suburbs. Which is what we see in the network plot below. Small clusters of units (points) of a single colour (suburb).
+# Why does QV vary by suburb in the first place?
 
-This accounts for why some suburbs pay more rates proportionally and why area isn't reflected in the median rates paid. More desirable areas pay more. Increased home value in one area passively raises nearby home values, leading to higher rates. This isn't 'fair'. It means that rate increases are effectively a premium paid for living in a house other people want to live in.
+The proportional plot shows how rates deviate from QV proportionality. But it doesn't explain why QV itself is so suburb-specific. If QV were driven primarily by property characteristics — size, age, land area — we'd expect similar houses in different suburbs to have similar QVs. The network plot tests this. It connects each property to its three closest QV neighbours (many more and the plot would be unreadable) and shows where they fall.
+
+In the proportional 997-unit sample below, 96% of each property's top-3 QV neighbours are in the same suburb. Only 4% cross a suburb boundary. The similarity is strongest within a suburb but not specifically within a street. QV clustering operates at the suburb scale, not the street scale.
+
+This means QV is set by location, not by the house itself. Two identical houses in different suburbs will have different QVs because the local market; demand, amenities, distance from CBD, school catchments, etc — sets the QV. A desirability premium that tracks the suburb's market position, not the property's physical attributes.
 
 ```{r graph 5 output, fig.width=8, fig.height= 4}
 #|fig.width: 8
@@ -541,7 +581,22 @@ This accounts for why some suburbs pay more rates proportionally and why area is
 QV_cluster
 ```
 
-So, who pays the most?\
-The owner of unit 4849 is one answer.\
-Residents of Otamatea is another.\
-And whoever lives in the homes other people want to live in, is another answer.
+# Two premiums, one bill
+
+The rate bill is shaped by two distinct mechanisms:
+
+* A density premium (UAGC effect). Fixed per-property charges are a larger fraction of the bill in moderate-QV, high-density suburbs and a smaller fraction in high-QV, low-density areas (rural). This pushes dense suburbs above the proportional line and rural below it.
+
+* A desirability premium (QV effect). QV is set at the suburb level by the local market. Suburbs in higher demand have higher QV's across the board, which raises the proportional component of every rate bill in that suburb.
+
+Taken together they mean the "each household pays according to value" statement is an oversimplification. The rate bill is shaped by where you live, how many neighbours share the fixed charges, and what the local market is willing to pay for that location.
+
+
+# So, are rates fair?
+
+That depends on what "fair" means. If fairness means "your share of the bill equals your share of property value," then no — the UAGC alone breaks that.  
+If fairness means "people in the same suburb pay the same rate," then, after accounting for outliers, yes.   
+If fairness means "you pay for what you use," then the UAGC is regressive and the QV component is not.  
+
+The data doesn't answer the question. It shows the mechanism. Whether the mechanism is fair is a question for the ratepayers.
+

@@ -1118,7 +1118,7 @@ edges_within <- street_data %>%
     street_data %>%
       select(assess_num, suburb, street, QV) %>%
       rename(to = QV, to_id = assess_num, to_street = street),
-    by = c(suburb = "suburb", from_street = "to_street"),  # <-- named join
+    by = c(suburb = "suburb", from_street = "to_street"),  
     relationship = "many-to-many"
   ) %>%
   filter(from_id != to_id, from_id < to_id) %>%
@@ -1135,7 +1135,7 @@ edges_between <- street_data %>%
     street_data %>%
       select(assess_num, suburb, street, QV) %>%
       rename(to = QV, to_id = assess_num, to_street = street),
-    by = "suburb",              # <-- NOT c("suburb", "street")
+    by = "suburb",             
     relationship = "many-to-many"
   ) %>%
   filter(
