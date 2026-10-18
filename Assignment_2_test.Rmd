@@ -1231,6 +1231,21 @@ ggraph(g2, layout = "fr") +
 
 
 
+```{r}
+unit_rates <- read_excel("Draft Rates by property 26.27 - statistical purposes 1.xlsx", sheet = "Unit Rates", skip = 2)
+
+Fixed_rate_components <- c("CBD","ESC","ESF","ESR","KS","MAW","RRC","RRF","RRR","SMO",
+                     "SMOH","UAGC...38","WC","WCM","WS","WSH","WSRE","WWS")
+
+UAGC_rates <- Data %>%
+  select(property_no, all_of(Fixed_rate_components)) %>%
+  mutate(across(all_of(Fixed_rate_components), ~ ifelse(is.na(.x), 0, .x)),
+         fixed_total = rowSums(pick(all_of(Fixed_rate_components)))) %>%
+  select(property_no, fixed_total)
+
+Rates %>% 
+  left_join(UAGC_rates, by = "property_no") 
+```
 
 
 
