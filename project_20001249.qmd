@@ -39,11 +39,9 @@ execute:
   warning: false
   message: false
 ---
-::: {ratebox1}
 Residential rate payers make up 88.4% of rateable units and 77% of total rate income. The majority of the rate burden falls on them. Which raises discussion around whether rates are 'fair'. For this analysis residential rates refers to both residential and lifestyle QV categories.
 
 The following analysis uses Whanganui Council rates from 2022 to 2026 only. Total rates are analysed, these are comprised of fixed and variable portions. For the purpose of this analysis separating the fixed rate component was done using draft rates by property for 26/27.
-:::
 
 ```{r library setup, message=FALSE, warning=FALSE}
 library(tidygraph)
