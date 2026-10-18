@@ -39,7 +39,7 @@ execute:
   warning: false
   message: false
 ---
-Residential rate payers make up 88.4% of rateable units and 77% of total rate income. The majority of the rate burden falls on them. Which raises discussion around whether rates are 'fair'. For this analysis residential rates refers to both residential and lifestyle QV categories.
+Residential rate payers make up 88.4% of rateable units and 77% of total rate income. The majority of the rate burden falls on them. Which raises discussion around whether rates are 'fair'. This analysis asks whether Whanganui residential rates are distributed proportionally to property value, and if not, what mechanisms drive the deviation. For this analysis residential rates refers to both residential and lifestyle QV categories.
 
 The following analysis uses Whanganui Council rates from 2022 to 2026 only. Total rates are analysed, these are comprised of fixed and variable portions. For the purpose of this analysis separating the fixed rate component was done using draft rates by property for 26/27.
 
@@ -621,7 +621,7 @@ QV_cluster <- ggraph(g, layout = "fr") +
 QV_cluster
 ```
 
-The proportional plot shows how rates deviate from QV proportionality. But it doesn't explain why QV itself is so suburb-specific. If QV were driven primarily by property characteristics — size, age, land area — we'd expect similar houses in different suburbs to have similar QVs. The network plot tests this. It connects each property to its three closest QV neighbours (many more and the plot would be unreadable) and shows where they fall. In the plot below, QV value calculated as $QV = CV + LV + (CV - LV)$ (QV, 2026). 
+The proportional plot shows how rates deviate from QV proportionality. But it doesn't explain why QV itself is so suburb-specific. If QV were driven primarily by property characteristics — size, age, land area — we'd expect similar houses in different suburbs to have similar QVs. The network plot (a force directed network, with k-nearest-neighbour similarity, k=3), proportional share decomposition.tests this. It connects each property to its three closest QV neighbours (many more and the plot would be unreadable) and shows where they fall. In the plot below, QV value calculated as $QV = CV + LV + (CV - LV)$ (QV, 2026). 
 
 In the proportional 997-unit sample below, 96% of each property's top-3 QV neighbours are in the same suburb. Only 4% cross a suburb boundary. The similarity is strongest within a suburb but not specifically within a street. QV clustering operates at the suburb scale, not the street scale.
 
