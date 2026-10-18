@@ -12,20 +12,28 @@ format:
       - margin=1cm
       - heightrounded
     mainfont: "Inter"
-    fontsize: 8pt
-    include-in-header:
-        text: |
-          \usepackage{wrapfig}
-         \makeatletter
-          \renewcommand{\@maketitle}{%
-            \begin{center}
-            {\large \@title \par}
-            \vskip 0.5em
-            {\normalsize \@author \par}
-            \vskip 0.3em
-            {\normalsize \@date \par}
-            \end{center}}
-          \makeatother
+    fontsize: 7pt
+include-in-header:
+  text: |
+    \usepackage{wrapfig}
+    \usepackage{graphicx}
+    \makeatletter
+    \renewcommand{\@maketitle}{%
+      \begin{center}
+      \begin{minipage}[c]{0.7\textwidth}
+      \raggedright
+      {\LARGE \@title \par}
+      \vskip 0.5em
+      {\normalsize \@author \par}
+      \vskip 0.3em
+      {\normalsize \@date \par}
+      \end{minipage}\hfill
+      \begin{minipage}[c]{0.2\textwidth}
+      \raggedleft
+      \includegraphics[height=1.5cm, width=\linewidth]{whanganui_council_logo.png}
+      \end{minipage}
+      \end{center}}
+    \makeatother
 execute:
   echo: false
   warning: false
@@ -34,9 +42,7 @@ execute:
 
 Residential rate payers make up 88.4% of rateable units and 77% of total rate income. The majority of the rate burden falls on them. Which raises discussion around whether rates are 'fair'. For this analysis residential rates refers to both residential and lifestyle QV categories.
 
-```{=latex}
-{\tiny \textit{The following analysis uses Whanganui Council rates from 2022 to 2026 only. Total rates are analysed, these are comprised of fixed and variable portions. For the purpose of this analysis separating the fixed rate component was done using draft rates by property for 26/27.}}
-```
+The following analysis uses Whanganui Council rates from 2022 to 2026 only. Total rates are analysed, these are comprised of fixed and variable portions. For the purpose of this analysis separating the fixed rate component was done using draft rates by property for 26/27.
 
 ```{r library setup, message=FALSE, warning=FALSE}
 library(tidygraph)
@@ -220,13 +226,13 @@ theme_report <- function(base_size = 10) {
       plot.subtitle = element_text(size = 8, hjust = 0,
                                    margin = margin(b = 5)),
       # Axes
-      axis.title = element_text(size = 8),
+      axis.title = element_text(size = 7),
       axis.text = element_text(size = 6),
       # Facet strips
       strip.text = element_text(face = "bold", size = 8),
       # Legend
       legend.position = "top",
-      legend.title = element_text(size = 8),
+      legend.title = element_text(size = 7),
       legend.text = element_text(size = 6),
       # Caption
       plot.caption = element_text(size =6)
@@ -262,14 +268,14 @@ data %>%
   coord_sf(xlim = w_bbox$x, ylim = w_bbox$y) + #need to change the rural district label to be visible
   #annotation
   geom_sf_label(mapping = aes(label = paste0(sa3_name, "\nn= ",as.character(count))), 
-               size = 2) + 
+               size = 1.5) + 
   annotate("label", x = 1777000, y = 5584000,
            label = paste0("Rural\nn=", rural_count), 
-           size = 2, fill = 'white') + #play with this to get the position right
+           size = 1.5, fill = 'white') + #play with this to get the position right
   #Scale arguments
   scale_fill_gradientn(colors = scales::alpha(whanganui_palette(3), 0.7),
                        limits = range(data[[fill]]),
-                       name = paste0(title, " (Thousands)"),
+                       name = paste0(title, "\n(Thousands)"),
                        labels = scales::label_number(scale = 1/1000)) +
   #Labels
   labs(title = "",
@@ -282,7 +288,8 @@ data %>%
         legend.justification = c(0, 0),
         legend.direction = "horizontal",
         legend.title.position = "top",
-        legend.key.width = grid::unit(0.2, "in"),
+        legend.key.width = grid::unit(0.15, "in"),
+        legend.key.height = grid::unit(0.1, "in"),
         text = element_text(family = "Inter", size = 5))
 }
 
@@ -363,30 +370,28 @@ box_suburbs <- graph_2_data %>%
 
 Let's start with...
 
-# Who pays the most?
-
-The answer depends on the unit of analysis. Individually, the owner of property 4849 in Gonville paid the most rates in 2026. By suburb, Otamatea ratepayers pay the highest median (\$5,213) but, as a group, contributed the least in total (\$3.1 million) — there only 593 of htem. Gonville, with a lower median ($3,928), has the most ratepayers (2,701) and contributes more in aggregate. Suburb size doesn't map directly to total rates because housing density is independent of area. The box plot below shows the log of rates to accommodate the many outliers within each suburb. 
-
-Rates are not evenly distributed, and neither are people.
-
-```{r graph 1 and 2 output, fig.width=8, fig.height=4}
+```{r graph 1 and 2 output, fig.width=8, fig.height=3}
 #|fig.width: 8
-#|fig.height: 4
+#|fig.height: 3
 
 #===== graph =====#
 (box_suburbs | median_map) +
   plot_annotation(
-    title = "Otamatea has the highest median rates. Gonville the highest total rates.",
-    subtitle = "Property 4849 in Gonville paid the highest rates: $99,549.64",
+    title = "Who pays the most rates?",
+    subtitle = "Otamatea has the highest median rates. Gonville the highest total rates. Property 4849 in Gonville paid the highest rates: $99,549.64",
     theme = theme(
       plot.margin = margin(0, 0, 0, 0),
       plot.title = element_text(size = 10, family = "Inter", face = "bold",
-                                margin = margin(t = 0, b = 0)),
+                                margin = margin(t = 5, b = 5)),
       plot.subtitle = element_text(size = 8, family = "Inter",
                                    margin = margin(b = -25)
     )))
 
 ```
+
+The answer depends on the unit of analysis. Individually, the owner of property 4849 in Gonville paid the most rates in 2026. By suburb, Otamatea ratepayers pay the highest median (\$5,213) but, as a group, contributed the least in total (\$3.1 million) — there only 593. Gonville, with a lower median ($3,928), has the most ratepayers (2,701) and contributes more in aggregate. Suburb size doesn't map directly to total rates because housing density is independent of area. The box plot below shows the log of rates to accommodate the many outliers within each suburb. 
+
+Rates are not evenly distributed, and neither are people.  
 
 ```{r graph 3 - proportion}
 #==== Wrangling ====#
@@ -432,7 +437,7 @@ proportion_graph <- graph_3_data %>%
   scale_fill_manual(values = c("#C7E9F3", "#92B8D8", "#5C88BD","#2757A2"),
                     name = "Quantiles") +
   #labels
-  labs(title = "Rate payments are not evenly spread.",
+  labs(title = "Are rates proportional at least?",
        subtitle = "Ribbons centred on 1 indicate proportional allocation. Expected fixed rate per suburb: $2,063.",
        x = "Year",
        y = "Rate share / Value share (1 = proportional)",
@@ -441,7 +446,13 @@ proportion_graph <- graph_3_data %>%
   theme_report()
 ```
 
-# Are rates proportional at least?
+```{r graph 3 output, fig.width=8, fig.height=4}
+#|fig.width: 8
+#|fig.height: 4
+
+proportion_graph
+```
+
 
 If rates were allocated purely by property value — "each household is rated according to the value of their property" (Whanganui City Council, 2026) — then each suburb's share of the total rate bill should equal its share of total QV. The proportional plot tests this: a suburb on the dashed line is paying exactly its QV-proportional share.
 
@@ -452,19 +463,9 @@ It's not that simple, because rates are a combination of a fixed per-property ch
 * Rural sits well below. With 2,701 units (second most in the city) and large land holdings (recall the map above), the fixed amount is a tiny fraction of each bill, only $1,021, about half of every other suburb. Rural also pays roughly half of what a pure QV-proportional system would predict.
 * Whanganui East, Centre, Aramoho, Gonville, Castlecliff sit above. Their moderate QV means the fixed portion is a larger fraction of each bill, pushing them above the line. Castlecliff has few high outliers and still sits above, ruling out outliers as the explanation for proportionality. However, due to these outliers, their fixed portions are higher than the expected amount. 
 
-```{=latex}
-{\tiny \textit{Note: the mean fixed rate is shown per suburb, as this shows the impact of outliers}}
-```
+> Note: the mean fixed rate is shown per suburb, as this shows the impact of outliers
 
 So paying the most in dollars is not the same as paying disproportionately. Otamatea's high rates are a direct consequence of its high property values. The suburbs that are overpaying relative to their QV share are the mid-value, higher-density ones — a density penalty. 
-
-
-```{r graph 3 output, fig.width=8, fig.height=4}
-#|fig.width: 8
-#|fig.height: 4
-
-proportion_graph
-```
 
 ```{r graph 5 - QV network, message=FALSE}
 #===== Wrangling =====#
@@ -590,7 +591,7 @@ QV_cluster <- ggraph(g, layout = "fr") +
     edge_type == "cross" ~ "Cross-suburb",
     TRUE ~ "Same suburb"
   )), show.legend = FALSE) +
-  geom_node_point(aes(colour = as.character(suburb)), size = 3, alpha = 0.7) +
+  geom_node_point(aes(colour = as.character(suburb)), size = 2, alpha = 0.7) +
   scale_colour_manual(
     values = c(
       setNames(whanganui_palette(10), suburbs)
@@ -599,7 +600,7 @@ QV_cluster <- ggraph(g, layout = "fr") +
   ) +
   #labs
   labs(
-    title = "Similar suburb, similar QV.",
+    title = "Why does QV vary by suburb in the first place?",
     subtitle = "Cross-suburb edges (red) vs. same-suburb (blue)",
     caption = paste0(nrow(edges_cross_suburb), " cross-suburb | ",
                       nrow(edges_within), " within-street | ",
@@ -614,7 +615,12 @@ QV_cluster <- ggraph(g, layout = "fr") +
 
 ```
 
-# Why does QV vary by suburb in the first place?
+```{r graph 5 output, fig.width=8, fig.height= 3}
+#|fig.width: 8
+#|fig.height: 3
+
+QV_cluster
+```
 
 The proportional plot shows how rates deviate from QV proportionality. But it doesn't explain why QV itself is so suburb-specific. If QV were driven primarily by property characteristics — size, age, land area — we'd expect similar houses in different suburbs to have similar QVs. The network plot tests this. It connects each property to its three closest QV neighbours (many more and the plot would be unreadable) and shows where they fall. In the plot below, QV value calculated as $QV = CV + LV + (CV - LV)$ (QV, 2026). 
 
@@ -622,12 +628,7 @@ In the proportional 997-unit sample below, 96% of each property's top-3 QV neigh
 
 This means QV is set by location, not by the house itself. Two identical houses in different suburbs will have different QVs because the local market; demand, amenities, distance from CBD, school catchments, etc — sets the QV. A desirability premium that tracks the suburb's market position, not the property's physical attributes.
 
-```{r graph 5 output, fig.width=8, fig.height= 4}
-#|fig.width: 8
-#|fig.height: 4
 
-QV_cluster
-```
 
 # Two premiums, one bill
 
@@ -648,7 +649,10 @@ If fairness means "you pay for what you use," then the fixed amount is regressiv
 
 The data doesn't answer the question. It shows the mechanism. Whether the mechanism is fair is a question for the ratepayers.
 
+<br> 
+
 ========================
+
 # References:
 
 1. Calculate.co.nz. (2026). *How Are Council Rates Calculated in NZ | Capital Value Explained*. https://www.calculate.co.nz/learning-center/council-rates-guide.php
