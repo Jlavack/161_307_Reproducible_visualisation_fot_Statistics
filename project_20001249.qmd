@@ -401,7 +401,7 @@ fixed_rates_summary <- Residential %>%
   select(property_no, suburb, fixed_total) %>%
   #use mean do capture effect of outliers. 
   group_by(suburb) %>%
-  summarise(mean_fixed_total = round(median(fixed_total),0),
+  summarise(mean_fixed_total = round(mean(fixed_total),0),
             n = n())
 
 graph_3_data <- Residential %>%
