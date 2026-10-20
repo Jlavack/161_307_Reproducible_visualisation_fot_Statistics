@@ -39,9 +39,9 @@ execute:
   warning: false
   message: false
 ---
-Residential rate payers make up 88.4% of rateable units and 77% of total rate income. The majority of the rate burden falls on them. Which raises discussion around whether rates are 'fair'. This analysis asks whether Whanganui residential rates are distributed proportionally to property value, and if not, what mechanisms drive the deviation. For this analysis residential rates refers to both residential and lifestyle QV categories.
+  Residential rate payers make up 88.4% of rateable units and 77% of total rate income. The majority of the rate burden falls on them. Which raises discussion around whether rates are 'fair'. This analysis asks whether Whanganui residential rates are distributed proportionally to property value, and if not, what mechanisms drive the deviation. For this analysis residential rates refers to both residential and lifestyle QV categories.
 
-The following analysis uses Whanganui Council rates from 2022 to 2026 only. Total rates are analysed, these are comprised of fixed and variable portions. For the purpose of this analysis separating the fixed rate component was done using draft rates by property for 26/27.
+  The following analysis uses Whanganui Council rates from 2022 to 2026 only. Total rates are analysed, these are comprised of fixed and variable portions. For the purpose of this analysis separating the fixed rate component was done using draft rates by property for 26/27.
 
 ```{r library setup, message=FALSE, warning=FALSE}
 library(tidygraph)
@@ -388,9 +388,9 @@ Let's start with...
 
 ```
 
-The answer depends on the unit of analysis. Individually, the owner of property 4849 in Gonville paid the most rates in 2026. By suburb, Otamatea ratepayers pay the highest median (\$5,213) but, as a group, contributed the least in total (\$3.1 million) — there only 593. Gonville, with a lower median ($3,928), has the most ratepayers (2,701) and contributes more in aggregate. Suburb size doesn't map directly to total rates because housing density is independent of area. The box plot below shows the log of rates to accommodate the many outliers within each suburb. 
+  The answer depends on the unit of analysis. Individually, the owner of property 4849 in Gonville paid the most rates in 2026. By suburb, Otamatea ratepayers pay the highest median (\$5,213) but, as a group, contributed the least in total (\$3.1 million) — there only 593. Gonville, with a lower median ($3,928), has the most ratepayers (2,701) and contributes more in aggregate. Suburb size doesn't map directly to total rates because housing density is independent of area. The box plot below shows the log of rates to accommodate the many outliers within each suburb. 
 
-Rates are not evenly distributed, and neither are people.  
+  Rates are not evenly distributed, and neither are people.  
 
 ```{r graph 3 - proportion}
 #==== Wrangling ====#
@@ -453,9 +453,9 @@ proportion_graph
 ```
 
 
-If rates were allocated purely by property value — "each household is rated according to the value of their property" (Whanganui City Council, 2026) — then each suburb's share of the total rate bill should equal its share of total QV. The proportional plot tests this: a suburb on the dashed line is paying exactly its QV-proportional share.
+  If rates were allocated purely by property value — "each household is rated according to the value of their property" (Whanganui City Council, 2026) — then each suburb's share of the total rate bill should equal its share of total QV. The proportional plot tests this: a suburb on the dashed line is paying exactly its QV-proportional share.
 
-It's not that simple, because rates are a combination of a fixed per-property charge and a proportional charge linked to QV (calculate.co.nz, 2026). The fixed value is the same dollar amount per SUIP regardless of property value, $2,063, so it weighs more heavily on lower-QV properties and less on higher-QV ones. This single mechanism explains most of the deviation from the proportional line:
+  It's not that simple, because rates are a combination of a fixed per-property charge and a proportional charge linked to QV (calculate.co.nz, 2026). The fixed value is the same dollar amount per SUIP regardless of property value, $2,063, so it weighs more heavily on lower-QV properties and less on higher-QV ones. This single mechanism explains most of the deviation from the proportional line:
 
 * St Johns Hill, Springvale, Bastia-Durie sit on or near the line — their QV and density happen to balance out.
 * Otamatea sits slightly below. Its high median QV means the fixed amount is a small fraction of each bill ($2,010), pulling the suburb below the line. In absolute terms it pays the most; proportionally, it's underpaying.
@@ -464,7 +464,7 @@ It's not that simple, because rates are a combination of a fixed per-property ch
 
 > Note: the mean fixed rate is shown per suburb, as this shows the impact of outliers
 
-So paying the most in dollars is not the same as paying disproportionately. Otamatea's high rates are a direct consequence of its high property values. The suburbs that are overpaying relative to their QV share are the mid-value, higher-density ones — a density penalty. 
+  So paying the most in dollars is not the same as paying disproportionately. Otamatea's high rates are a direct consequence of its high property values. The suburbs that are overpaying relative to their QV share are the mid-value, higher-density ones — a density penalty. 
 
 ```{r graph 5 - QV network, message=FALSE}
 #===== Wrangling =====#
@@ -621,32 +621,32 @@ QV_cluster <- ggraph(g, layout = "fr") +
 QV_cluster
 ```
 
-The proportional plot shows how rates deviate from QV proportionality. But it doesn't explain why QV itself is so suburb-specific. If QV were driven primarily by property characteristics — size, age, land area — we'd expect similar houses in different suburbs to have similar QVs. The network plot (a force directed network, with k-nearest-neighbour similarity, k=3), proportional share decomposition.tests this. It connects each property to its three closest QV neighbours (many more and the plot would be unreadable) and shows where they fall. In the plot below, QV value calculated as $QV = CV + LV + (CV - LV)$ (QV, 2026). 
+  The proportional plot shows how rates deviate from QV proportionality. But it doesn't explain why QV itself is so suburb-specific. If QV were driven primarily by property characteristics — size, age, land area — we'd expect similar houses in different suburbs to have similar QVs. The network plot (a force directed network, with k-nearest-neighbour similarity, k=3), proportional share decomposition.tests this. It connects each property to its three closest QV neighbours (many more and the plot would be unreadable) and shows where they fall. In the plot below, QV value calculated as $QV = CV + LV + (CV - LV)$ (QV, 2026). 
 
-In the proportional 997-unit sample below, 96% of each property's top-3 QV neighbours are in the same suburb. Only 4% cross a suburb boundary. The similarity is strongest within a suburb but not specifically within a street. QV clustering operates at the suburb scale, not the street scale.
+  In the proportional 997-unit sample below, 96% of each property's top-3 QV neighbours are in the same suburb. Only 4% cross a suburb boundary. The similarity is strongest within a suburb but not specifically within a street. QV clustering operates at the suburb scale, not the street scale.
 
-This means QV is set by location, not by the house itself. Two identical houses in different suburbs will have different QVs because the local market; demand, amenities, distance from CBD, school catchments, etc — sets the QV. A desirability premium that tracks the suburb's market position, not the property's physical attributes.
+  This means QV is set by location, not by the house itself. Two identical houses in different suburbs will have different QVs because the local market; demand, amenities, distance from CBD, school catchments, etc — sets the QV. A desirability premium that tracks the suburb's market position, not the property's physical attributes.
 
 
 
 # Two premiums, one bill
 
-The rate bill is shaped by two distinct mechanisms:
+  The rate bill is shaped by two distinct mechanisms:
 
-* A density premium (fixed amount effect). Fixed per-property charges are a larger fraction of the bill in moderate-QV, high-density suburbs and a smaller fraction in high-QV, low-density areas (rural). This pushes dense suburbs above the proportional line and rural below it.
+* A density premium, a fixed amount effect. Fixed per-property charges are a larger fraction of the bill in moderate-QV, high-density suburbs and a smaller fraction in high-QV, low-density areas (rural, Otamatea). This pushes dense suburbs above the proportional line and less dense ones below it.
 
-* A desirability premium (QV effect). QV is set at the suburb level by the local market. Suburbs in higher demand have higher QV's across the board, which raises the proportional component of every rate bill in that suburb.
+* A desirability premium, the QV effect. QV is set at the suburb level by the local market. Suburbs in higher demand have higher QV's across the board, which raises the proportional component of every rate bill in that suburb.
 
-Taken together they mean the "each household pays according to value" statement is an oversimplification. The rate bill is shaped by where you live, how many neighbours share the fixed charges, and what the local market is willing to pay for that location.
+  Taken together they mean the "each household pays according to value" statement is an oversimplification. The rate bill is shaped by where you live, how many neighbours share the fixed charges, and what the local market is willing to pay for that location.
 
 
 # So, are rates fair?
 
-That depends on what "fair" means. If fairness means "your share of the bill equals your share of property value," then no — the fixed portion alone breaks that.  
-If fairness means "people in the same suburb pay the same rate," then, after accounting for outliers, yes.   
-If fairness means "you pay for what you use," then the fixed amount is regressive and the QV component is not.  
+  That depends on what "fair" means. If fairness means "your share of the bill equals your share of property value," then no — the fixed portion alone breaks that.  
+  If fairness means "people in the same suburb pay the same rate," then, after accounting for outliers, yes.   
+  If fairness means "you pay for what you use," then the fixed amount is regressive and the QV component is not.  
 
-The data doesn't answer the question. It shows the mechanism. Whether the mechanism is fair is a question for the ratepayers.
+  The data doesn't answer the question. It shows the mechanism. Whether the mechanism is fair is a question for the ratepayers.
 
 <br> 
 

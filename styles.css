@@ -1,0 +1,17 @@
+.box-purple {
+    background-color: #DCC0E2;
+    border-radius: 8px;
+    padding: 6px;
+}
+
+.box-blue {
+    background-color: #C7E9F3;
+    border-radius: 8px;
+    padding: 6px;
+}
+
+.box-orange {
+    background-color: #FEEAD7;
+    border-radius: 8px;
+    padding: 6px;
+}
