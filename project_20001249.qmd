@@ -417,8 +417,8 @@ graph_3_data <- Residential %>%
   ungroup() %>%
   left_join(fixed_rates_summary, by = "suburb") %>%
   mutate(suburb_label = factor(
-  paste0(suburb, "\n Median fixed: $ ", mean_fixed_total),
-  levels = paste0(levels(suburb), "\n Median fixed: $ ", 
+  paste0(suburb, "\n Mean fixed: $ ", mean_fixed_total),
+  levels = paste0(levels(suburb), "\n Mean fixed: $ ", 
                   fixed_rates_summary$mean_fixed_total[match(levels(suburb), fixed_rates_summary$suburb)])
   ))
 
