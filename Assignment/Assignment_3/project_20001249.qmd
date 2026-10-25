@@ -1,0 +1,661 @@
+---
+title: "Are rates fair?"
+author: "John Lavack, 20001249"
+date: "2026-10-18"
+editor: visual
+format:
+  pdf:
+    toc: false
+    # toc-depth: 3
+    papersize: a4
+    geometry:
+      - margin=1cm
+      - heightrounded
+    mainfont: "Inter"
+    fontsize: 7pt
+include-in-header:
+  text: |
+    \usepackage{wrapfig}
+    \usepackage{graphicx}
+    \makeatletter
+    \renewcommand{\@maketitle}{%
+      \begin{center}
+      \begin{minipage}[c]{0.7\textwidth}
+      \raggedright
+      {\LARGE \@title \par}
+      \vskip 0.5em
+      {\normalsize \@author \par}
+      \vskip 0.3em
+      {\normalsize \@date \par}
+      \end{minipage}\hfill
+      \begin{minipage}[c]{0.2\textwidth}
+      \raggedleft
+      \includegraphics[height=1.5cm, width=\linewidth]{whanganui_council_logo.png}
+      \end{minipage}
+      \end{center}}
+    \makeatother
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+  Residential rate payers make up 88.4% of rateable units and 77% of total rate income. The majority of the rate burden falls on them. Which raises discussion around whether rates are 'fair'. This analysis asks whether Whanganui residential rates are distributed proportionally to property value, and if not, what mechanisms drive the deviation. For this analysis residential rates refers to both residential and lifestyle QV categories.
+
+  The following analysis uses Whanganui Council rates from 2022 to 2026 only. Total rates are analysed, these are comprised of fixed and variable portions. For the purpose of this analysis separating the fixed rate component was done using draft rates by property for 26/27.
+
+```{r library setup, message=FALSE, warning=FALSE}
+library(tidygraph)
+library(tidyverse)
+library(readxl)
+library(ggdist)
+library(maps)    
+library(sf)  
+library(patchwork)
+library(igraph)
+library(ggraph)
+library(showtext)
+font_add_google("Inter", "Inter")
+showtext_auto()
+```
+
+```{r data setup, message=FALSE, warning=FALSE}
+#===== Read in data ======#
+# Unit_Rates <- read_excel("Draft Rates by property 26.27 - statistical purposes 1.xlsx", sheet = "Unit Rates")
+wdc_rates <- read_csv("wdc_rates_qv.csv") %>% 
+  mutate(rate_yr = factor(rate_yr, levels = c("22_23", "23_24", "24_25", "25_26", "26_27"), ordered = TRUE))
+
+Data <- read_excel("Draft Rates by property 26.27 - statistical purposes 1.xlsx", sheet = "Data", skip = 2) %>%
+  drop_na(property_no)
+
+#===== fixed rates calc =====#
+Fixed_rate_components <- c("CBD","ESC","ESF","ESR","KS","MAW","RRC","RRF","RRR","SMO",
+                     "SMOH","UAGC...38","WC","WCM","WS","WSH","WSRE","WWS")
+
+Fixed_rates <- Data %>%
+  select(property_no, all_of(Fixed_rate_components)) %>%
+  mutate(across(all_of(Fixed_rate_components), ~ ifelse(is.na(.x), 0, .x)),
+         fixed_total = rowSums(pick(all_of(Fixed_rate_components)))) %>%
+  select(property_no, fixed_total)
+
+
+#===== map setup begin ======#
+nz <- read_sf("nz_sa3.gpkg")
+#read_sf("https://www.massey.ac.nz/~jcmarsha/data/nz_map/sa3_data.sqlite")
+
+ta_nz <- nz %>% 
+  group_by(territorial_authority, regional_council) %>%
+  summarise(geometry = st_union(geom), .groups = 'drop')
+
+whanganui <- nz %>% filter(territorial_authority == "Whanganui District") %>%
+  mutate(sa3_name = recode(sa3_name,
+                           "Otamatea (Whanganui District)" = "Otamatea",
+                           "Whanganui District Rural" = "Rural",
+                           "Bastia-Durie Hill-Putiki" = "Bastia-Durie"))
+
+bbox <- st_bbox(whanganui)
+
+w_bbox <- list(x = c(1767500, 1779000), y=c(5574000, 5585000))
+#===== map setup finish ======#
+
+#===== Mapping Suburbs begin =====#
+St_John_Streets <- c('Acton Pl', 'Aiken Rd', 'Alexa Pl', "Brassey Rd","Bristow St", "Chittick Pl","Collier Pl", "Dickson Cres", "Halswell St","Halswell Street","Hillside Tce", "Kent Rd","Linda Pl", "Ngapuhi St", "Oakland Ave","Parkes Ave", "Parsons St", "Porritt St", "Rawhiti Pl", "Smart Tce", "St Leonard St","Taranaki St","Tarata St", "Tregarth St","Tulloch St", "Virginia Rd", 'Peakes Rd', 'Victoria Park', 'Virginia Lake (Rotokawau)')
+
+Otamatea_Streets <- c('Sewerage Pump Turere', 'Babbage Pl', 'Beachcroft', "Chelsea Cl", "Cotswolds Cl", "Diana Pl", "Eaton Cres", "Edith Collier Dr", "Edmonds Dr", "Goldsbury Pl", "Gumtree Rise", "Holdsworth Dr", "Kawau Pl", "Lancewood Pl", "Lithgow Dr", "Mannington Rd", "Montgomery Rd", "Norfolk Dr", "Otamatea Reserve", "Perrett Dr", "Pickwick Rd", "Rotokawau Dr", "Sandcroft Dr", "Sandy Lane", "St Johns Hts", "Suffolk Dr", "Tasman Views", "Tirimoana Pl", "Turere Pl","Virginia Hts", "Webster Pl", "Pukeko Drive", 'Tangaroa View', 'Middens Way')
+
+Springvale_streets <-c('Addenbrooke Tce')
+
+Whanganui_Centre_Streets <- c('Pitt St', 'Peat Pl', 'Peat St')
+
+#===== Mapping suburbs finish =====
+
+#===== Data wrangling begin =====
+streets <- wdc_rates %>% 
+  filter(suburb == "St Johns/Otamatea") %>% 
+  select(property_no, rate_yr, property_address, suburb) %>%
+  mutate(
+    house_num = as.integer(str_extract(property_address, "^\\s*(\\d+)")), 
+    street = str_remove(property_address, "~.*"),
+    street = str_remove(street, "-."),
+    street = str_remove(street, "^(?i:unit\\s+)?(?:[\\d/][\\d/A-Za-z]*\\s+)+"), #handles numbers and numbers like 9A,alos UNIT 6C / 59 and
+  ) %>%
+  mutate(
+    suburb = case_when(
+      #house numbers on great north road. great north road spans both. Lower number in St Johns up to 117. Then 119 and 121 are St Johns. 118, 120 and 122 onwards are otamtea
+      street == "Great North Rd" & is.na(house_num) ~ "St Johns Hill",
+      street == "Great North Rd" & house_num <= 117 ~ "St Johns Hill",
+      street == "Great North Rd" & house_num %in% c(119, 121) ~ "St Johns Hill",
+      street == "Great North Rd" & house_num >= 118 ~ "Otamatea (Whanganui District)",
+      #easier ones
+      street %in% St_John_Streets ~ "St Johns Hill",
+      street %in% Otamatea_Streets ~ "Otamatea (Whanganui District)",
+      street %in% Springvale_streets ~ "Springvale",
+      street %in% Whanganui_Centre_Streets ~ "Whanganui Centre",
+      TRUE ~ suburb
+    )
+  ) %>% select(property_no, rate_yr, suburb) #for left join
+
+#join tdatasets to get what I need. Remove nulls from data set.
+Rates <- wdc_rates %>% 
+  filter(!is.na(assessment_number)) %>%
+  mutate( #mapping qv_category to res/com/farm for simpler groupings
+    Category = case_when(
+      `qv category` %in% c('Commercial', 'Industrial') ~ 'Commercial', 
+      `qv category` %in% c('Farming', 'Dairy', 'Pastoral', 'Forestry', 'Horticulture', 'Mining') ~ 'Farming',
+      `qv category` %in% c('Other', 'Specialist', 'Utility asset') ~ 'Specialist',
+      `qv category` %in% c('Residential', 'Lifestyle') ~ 'Residential',
+      TRUE ~ `qv category`)
+    ) %>%
+  left_join(streets, by = c('property_no', 'rate_yr'), suffix = c("", "_new")) %>%
+  mutate(suburb = coalesce(suburb_new, suburb)) %>%
+  mutate(
+    suburb = recode(suburb,
+    "Bastia/Durie Hills Putiki" = "Bastia-Durie Hill-Putiki",
+    "Whanganui Central" = "Whanganui Centre",
+    "Whanganui Rural" = "Whanganui District Rural",)
+  ) %>%
+  mutate(year = case_when(
+    rate_yr == '22_23' ~ 2022,
+    rate_yr == '23_24' ~ 2023,
+    rate_yr == '24_25' ~ 2024,
+    rate_yr == '25_26' ~ 2025,
+    rate_yr == '26_27' ~ 2026,
+    TRUE ~ NA,
+    ),
+    QV = cv + lv + (cv - lv),
+    rate_per_m = `rate area (ha)` * 10000) %>%
+  mutate(Category = factor(Category, 
+                           levels = c('Specialist', 'Farming', 'Commercial', 'Residential'))) %>% #for consistent color coding
+  select(-suburb_new) %>%
+  mutate(suburb = recode(suburb, 
+                         "Otamatea (Whanganui District)" = "Otamatea",
+                         "Whanganui District Rural" = "Rural",
+                         "Bastia-Durie Hill-Putiki" = "Bastia-Durie"))
+
+#ranking for suburbs by median rates in 2026
+Suburb_rank <- Rates %>%
+  filter(Category == "Residential", year == 2026) %>%
+  group_by(suburb) %>% 
+  summarise(m = median(`total rates`)) %>%
+  mutate(rank = rank(-m, ties.method = "min")) %>%   
+  arrange(rank)    
+
+Residential <- Rates %>%
+  filter(Category == "Residential") %>%
+  mutate(suburb = factor(suburb, levels = Suburb_rank$suburb))
+
+#===== Data wrangling finish =====#
+```
+
+```{r theme setup}
+#===== Colour palette setup =====#
+whanganui_palette <- function(n = 13, which = NULL) {
+  pal <- c( #from inspecting the page elements of the Whanganui website, then color dropper picking from the coat of arms
+  "#2757A2", 
+  "#FEC30E",
+  "#AD1619",
+  "#008242", 
+  "#DCC0E2", 
+  "#C7E9F3",
+  "#687928",
+  "#D4582A",
+  "#8B514E",
+  "#93735B",
+  "#372502",
+  "#004925",
+  "#FEEAD7",
+  "black")
+  
+  if (!is.null(which)) {
+    pal[which]
+  }
+  else if (n <= length(pal)) {
+    pal[seq_len(n)]
+  } else {
+    grDevices::colorRampPalette(pal)(n)
+  }
+}
+
+#===== Custom theme =====#
+# font is Inter sans-serif, from website inspect elements on Whanganui council
+theme_report <- function(base_size = 10) {
+  theme_minimal(base_size = base_size, base_family = "Inter") +
+    theme(
+      # Titles
+      plot.title = element_text(size = 10, face = "bold", hjust = 0),
+      plot.subtitle = element_text(size = 8, hjust = 0,
+                                   margin = margin(b = 5)),
+      # Axes
+      axis.title = element_text(size = 7),
+      axis.text = element_text(size = 6),
+      # Facet strips
+      strip.text = element_text(face = "bold", size = 8),
+      # Legend
+      legend.position = "top",
+      legend.title = element_text(size = 7),
+      legend.text = element_text(size = 6),
+      # Caption
+      plot.caption = element_text(size =6)
+    )
+}
+
+theme_map <- function(base_size = 10) {
+  theme_minimal(base_size = base_size, base_family = "Inter") +
+    theme(
+      # panels
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      # Titles
+      plot.title = element_text(size = 10, face = "bold", hjust = 0),
+      plot.subtitle = element_text(size = 8, hjust = 0),
+      # Axes
+      axis.title =  element_blank(),
+      axis.text =  element_blank(),
+      # Legend
+      legend.title = element_text(size = 6),
+      legend.text = element_text(size = 4)
+    )
+}
+```
+
+```{r graph 1 - map}
+#===== Map Graph function =====#
+#this funcrtion remains from my work when I was testing different fill values
+map_graph <- function(data, fill, title) {
+data %>%
+  ggplot() +
+  geom_sf(mapping=aes(fill = .data[[fill]]), col = 'white', linewidth = 1, alpha = 0.5) +
+  coord_sf(xlim = w_bbox$x, ylim = w_bbox$y) + #need to change the rural district label to be visible
+  #annotation
+  geom_sf_label(mapping = aes(label = paste0(sa3_name, "\nn= ",as.character(count))), 
+               size = 1.5) + 
+  annotate("label", x = 1777000, y = 5584000,
+           label = paste0("Rural\nn=", rural_count), 
+           size = 1.5, fill = 'white') + #play with this to get the position right
+  #Scale arguments
+  scale_fill_gradientn(colors = scales::alpha(whanganui_palette(3), 0.7),
+                       limits = range(data[[fill]]),
+                       name = paste0(title, "\n(Thousands)"),
+                       labels = scales::label_number(scale = 1/1000)) +
+  #Labels
+  labs(title = "",
+       subtitle = '',
+       x = '',
+       y = '') +
+  #Theme
+  theme_map() +
+  theme(legend.position = c(0.0, 0.0),
+        legend.justification = c(0, 0),
+        legend.direction = "horizontal",
+        legend.title.position = "top",
+        legend.key.width = grid::unit(0.15, "in"),
+        legend.key.height = grid::unit(0.1, "in"),
+        text = element_text(family = "Inter", size = 5))
+}
+
+#===== Wrangling =====#
+graph_3_data <- Rates %>% 
+  filter(year == 2026, Category == 'Residential') %>%
+  group_by(suburb) %>%
+  summarise(median_rates = median(`total rates`),
+            count = n(),
+            total = sum(`total rates`),
+            .groups = 'drop') 
+
+map_data <- whanganui %>%
+  left_join(graph_3_data, by = c('sa3_name' = "suburb")) 
+
+#get count of units in suburb for labels
+#this is separate because the labels wants to be out of the bounding box window
+rural_count <- graph_3_data %>%
+  filter(suburb == 'Rural') %>%
+  pull(count)
+
+#===== Median rates map =====#
+median_map <- map_graph(map_data, "median_rates", 'Median rates')
+
+```
+
+```{r graph 2 - dot and box}
+#===== wrangling =====#
+Total_rates_suburb <- Residential %>%
+  filter(year == 2026) %>%
+  group_by(suburb) %>% 
+  summarise(t = sum(`total rates`))
+
+graph_2_data <- Residential %>%
+  filter(year == 2026) %>% #avoid double counting
+  left_join(Total_rates_suburb %>% select(suburb, t), by = "suburb") %>%
+  mutate(suburb_label = factor(
+    paste0(suburb, "\nTotal rates = $", round(t / 1e6, 1), "M"),
+    levels = paste0(Suburb_rank$suburb, "\nTotal rates = $",
+                    round(Total_rates_suburb$t[match(Suburb_rank$suburb,
+                                                     Total_rates_suburb$suburb)] / 1e6, 1), "M")
+  ))
+
+max_row <- graph_2_data %>%
+  filter(year == 2026) %>%
+  slice_max(`total rates`, n = 1)
+
+#final dataset
+graph_2_data <- graph_2_data %>%
+  filter(!(`total rates` == max_row$`total rates`))
+
+#===== box and dots =====#
+box_suburbs <- graph_2_data %>%
+  mutate(suburb_label = forcats::fct_rev(as.factor(suburb_label))) %>% 
+  ggplot(aes(x=log(`total rates`), y = suburb_label, col= suburb)) +
+  geom_point(position = position_jitterdodge(jitter.width = 1), alpha = 0.3, size = 1, shape = 16) +
+  geom_boxplot(col = 'black', fill = NA, outlier.shape = NA, size = 0.5) +
+  #annotation specific code. The max rates unit
+  geom_point(data = max_row,
+             aes(x = log(`total rates`), y = suburb_label),
+             colour = "#687928", size = 3, inherit.aes = FALSE) +
+  annotate("point",
+           x = log(max_row$`total rates`),
+           y = max_row$suburb_label,
+           size = 8, colour = "black", shape = 1) +
+  #scales
+  scale_color_manual(values = whanganui_palette()) +
+  #labels
+  labs(title = "",
+    subtitle = "",
+       y = '', 
+       x = 'Log of total rates') +
+  #theme
+  theme_report() +
+  theme(legend.position = 'none',
+        panel.grid.major.y = element_blank())
+```
+
+Let's start with...
+
+```{r graph 1 and 2 output, fig.width=8, fig.height=3}
+#|fig.width: 8
+#|fig.height: 3
+
+#===== graph =====#
+(box_suburbs | median_map) +
+  plot_annotation(
+    title = "Who pays the most rates?",
+    subtitle = "Otamatea has the highest median rates. Gonville the highest total rates. Property 4849 in Gonville paid the highest rates: $99,549.64",
+    theme = theme(
+      plot.margin = margin(0, 0, 0, 0),
+      plot.title = element_text(size = 10, family = "Inter", face = "bold",
+                                margin = margin(t = 5, b = 5)),
+      plot.subtitle = element_text(size = 8, family = "Inter",
+                                   margin = margin(b = -25)
+    )))
+
+```
+
+  The answer depends on the unit of analysis. Individually, the owner of property 4849 in Gonville paid the most rates in 2026. By suburb, Otamatea ratepayers pay the highest median (\$5,213) but, as a group, contributed the least in total (\$3.1 million) — there only 593. Gonville, with a lower median ($3,928), has the most ratepayers (2,701) and contributes more in aggregate. Suburb size doesn't map directly to total rates because housing density is independent of area. The box plot below shows the log of rates to accommodate the many outliers within each suburb. 
+
+  Rates are not evenly distributed, and neither are people.  
+
+```{r graph 3 - proportion}
+#==== Wrangling ====#
+#fixed rate part
+fixed_rates_summary <- Residential %>% 
+  filter(year == 2026) %>%
+  left_join(Fixed_rates, by = "property_no") %>%
+  select(property_no, suburb, fixed_total) %>%
+  #use mean do capture effect of outliers. 
+  group_by(suburb) %>%
+  summarise(mean_fixed_total = round(mean(fixed_total),0),
+            n = n())
+
+graph_3_data <- Residential %>%
+  group_by(year) %>%
+  mutate(
+    rate_share  = `total rates` / sum(`total rates`),
+    value_share = QV / sum(QV),
+    ratio = rate_share / value_share   # 1 = perfectly proportional
+  ) %>%
+  ungroup() %>%
+  group_by(year, suburb) %>%
+  reframe(median_qi(ratio, .width = c(.25, .50, .80, .95))) %>%
+  ungroup() %>%
+  left_join(fixed_rates_summary, by = "suburb") %>%
+  mutate(suburb_label = factor(
+  paste0(suburb, "\n Mean fixed: $ ", mean_fixed_total),
+  levels = paste0(levels(suburb), "\n Mean fixed: $ ", 
+                  fixed_rates_summary$mean_fixed_total[match(levels(suburb), fixed_rates_summary$suburb)])
+  ))
+
+
+
+#===== Plot =====#
+proportion_graph <- graph_3_data %>%
+  ggplot(aes(x = year, y = y)) +
+  geom_lineribbon(aes(ymin = ymin, ymax = ymax),
+                  color = "#DC0100", alpha = 0.5, linewidth = 0.5) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "black") +
+  facet_wrap(~ suburb_label, ncol = 5) +
+  #scale arguments
+  scale_x_continuous(labels = function(x) x %% 100) +
+  scale_fill_manual(values = c("#C7E9F3", "#92B8D8", "#5C88BD","#2757A2"),
+                    name = "Quantiles") +
+  #labels
+  labs(title = "Are rates proportional at least?",
+       subtitle = "Ribbons centred on 1 indicate proportional allocation. Expected fixed rate per suburb: $2,063.",
+       x = "Year",
+       y = "Rate share / Value share (1 = proportional)",
+       caption = "Black dotted line is the proportion if every house paid proportionally towards rates based on their share pf the total QV.") +
+  #theme
+  theme_report()
+```
+
+```{r graph 3 output, fig.width=8, fig.height=4}
+#|fig.width: 8
+#|fig.height: 4
+
+proportion_graph
+```
+
+
+  If rates were allocated purely by property value — "each household is rated according to the value of their property" (Whanganui City Council, 2026) — then each suburb's share of the total rate bill should equal its share of total QV. The proportional plot tests this: a suburb on the dashed line is paying exactly its QV-proportional share.
+
+  It's not that simple, because rates are a combination of a fixed per-property charge and a proportional charge linked to QV (calculate.co.nz, 2026). The fixed value is the same dollar amount per SUIP regardless of property value, $2,063, so it weighs more heavily on lower-QV properties and less on higher-QV ones. This single mechanism explains most of the deviation from the proportional line:
+
+* St Johns Hill, Springvale, Bastia-Durie sit on or near the line — their QV and density happen to balance out.
+* Otamatea sits slightly below. Its high median QV means the fixed amount is a small fraction of each bill ($2,010), pulling the suburb below the line. In absolute terms it pays the most; proportionally, it's underpaying.
+* Rural sits well below. With 2,701 units (second most in the city) and large land holdings (recall the map above), the fixed amount is a tiny fraction of each bill, only $1,021, about half of every other suburb. Rural also pays roughly half of what a pure QV-proportional system would predict.
+* Whanganui East, Centre, Aramoho, Gonville, Castlecliff sit above. Their moderate QV means the fixed portion is a larger fraction of each bill, pushing them above the line. Castlecliff has few high outliers and still sits above, ruling out outliers as the explanation for proportionality. However, due to these outliers, their fixed portions are higher than the expected amount. 
+
+> Note: the mean fixed rate is shown per suburb, as this shows the impact of outliers
+
+  So paying the most in dollars is not the same as paying disproportionately. Otamatea's high rates are a direct consequence of its high property values. The suburbs that are overpaying relative to their QV share are the mid-value, higher-density ones — a density penalty. 
+
+```{r graph 5 - QV network, message=FALSE}
+#===== Wrangling =====#
+set.seed(21)
+
+prop <- 1000 / nrow(Residential %>% filter(year == 2026))
+
+street_data <- Residential %>% 
+  filter(year == 2026) %>%
+  select(property_no, assessment_number, property_address, suburb, QV, year, `total rates`) %>%
+  mutate(
+      street = str_remove(property_address, "~WHANGANUI.*$"),
+      street = str_remove(street, "^\\s*\\d+\\s*"),
+      assess_num = str_remove(assessment_number, "[A-Z]+$") |> as.numeric()
+  ) %>%
+  filter(!is.na(street)) %>%
+  group_by(suburb) %>%
+  slice_sample(prop = prop) %>%
+  ungroup() 
+
+# Build edges using assessment_no as the ID. It it a proxy for closeness that is easier to work with. I looked through the data and that is what I saw. Streets were alphabetically arranged, by street number within suburbs with the property number indicating closeness. 
+# I will calculate simlirity as price of point of origin, to the nearby units, normalised so 1 = the same QV, and 0 = most different. 
+
+#===== Within-street edges =====#
+#same street, same suburb. If high then closer houses have similar QV
+edges_within <- street_data %>%
+  select(assess_num, suburb, street, QV) %>%
+  rename(from = QV, from_id = assess_num, from_street = street) %>%
+  left_join(
+    street_data %>%
+      select(assess_num, suburb, street, QV) %>%
+      rename(to = QV, to_id = assess_num, to_street = street),
+    by = c(suburb = "suburb", from_street = "to_street"),  
+    relationship = "many-to-many"
+  ) %>%
+  filter(from_id != to_id, from_id < to_id) %>%
+  mutate(sim = 1 - abs(from - to) / max(from, to)) %>%
+  filter(sim >= 0.8) %>%
+  select(from_id, to_id, sim, suburb) %>%
+  mutate(edge_type = "within")
+
+#cap for render speed:
+edges_within  <- edges_within  %>% 
+  group_by(from_id) %>% 
+  slice_max(sim, n = 3) %>% 
+  ungroup()
+
+#===== Between: Cross-street edges (same suburb, different street)=====#
+#same suburb, different streets. If high then same as within set. If market conditions drive QV, tehn this should be lower htan within, but still high - desirable suburbs and all that. 
+edges_between <- street_data %>%
+  select(assess_num, suburb, street, QV) %>%
+  rename(from = QV, from_id = assess_num, from_street = street) %>%
+  left_join(
+    street_data %>%
+      select(assess_num, suburb, street, QV) %>%
+      rename(to = QV, to_id = assess_num, to_street = street),
+    by = "suburb",           
+    relationship = "many-to-many"
+  ) %>%
+  filter(
+    from_street != to_street,
+    from_id != to_id,
+    from_id < to_id
+  ) %>%
+  mutate(sim = 1 - abs(from - to) / max(from, to)) %>%
+  filter(sim >= 0.8) %>%
+  select(from_id, to_id, sim, suburb) %>%
+  mutate(edge_type = "between")
+
+#cap for render speed
+edges_between <- edges_between %>% 
+  group_by(from_id) %>% 
+  slice_max(sim, n = 3) %>%
+  ungroup()
+
+#===== cross suburb edges =====#
+#different suburbs. If high then desibability of market is not real. If low, then local market doesn't cross subrub lines. 
+edges_cross_suburb <- street_data %>%
+  select(assess_num, suburb, street, QV) %>%
+  rename(from = QV, from_id = assess_num, from_suburb = suburb) %>%
+  left_join(
+    street_data %>%
+      select(assess_num, suburb, street, QV) %>%
+      rename(to = QV, to_id = assess_num, to_suburb = suburb),
+    by = NULL,
+    relationship = "many-to-many"
+  ) %>%
+  filter(
+    from_suburb != to_suburb,
+    from_id < to_id
+  ) %>%
+  mutate(sim = 1 - abs(from - to) / max(from, to)) %>%
+  filter(sim >= 0.8) %>%
+  select(from_id, to_id, sim)
+
+if (nrow(edges_cross_suburb) > 500) {
+  edges_cross_suburb <- edges_cross_suburb %>% slice_sample(n = 500)
+}
+
+#===== Combine =====#
+all_edges <- bind_rows(
+  edges_within  %>% mutate(edge_type = "within"),
+  edges_between %>% mutate(edge_type = "between"),
+  edges_cross_suburb %>% mutate(edge_type = "cross")
+)
+
+#===== Build graph =====#
+
+g <- graph_from_data_frame(
+  all_edges,
+  vertices = street_data %>% distinct(assess_num, suburb) %>% set_names(c("name", "suburb")),
+  directed = FALSE
+)
+
+# # Attach edge_type as a vertex-independent edge attribute
+E(g)$edge_type <- all_edges$edge_type
+
+suburbs <- as.character(sort(unique(street_data$suburb)))
+
+#===== Plot =====#
+QV_cluster <- ggraph(g, layout = "fr") +
+  geom_edge_link(aes(colour = case_when(
+    edge_type == "cross" ~ "Cross-suburb",
+    TRUE ~ "Same suburb"
+  )), show.legend = FALSE) +
+  geom_node_point(aes(colour = as.character(suburb)), size = 2, alpha = 0.7) +
+  scale_colour_manual(
+    values = c(
+      setNames(whanganui_palette(10), suburbs)
+    ),
+    name = ''
+  ) +
+  #labs
+  labs(
+    title = "Why does QV vary by suburb in the first place?",
+    subtitle = "Cross-suburb edges (red) vs. same-suburb (blue)",
+    caption = paste0(nrow(edges_cross_suburb), " cross-suburb | ",
+                      nrow(edges_within), " within-street | ",
+                      nrow(edges_between), " cross-street"),
+  ) +
+  #theme
+  theme_void(base_family = "Inter") +
+  theme(legend.position = "right",
+        plot.title = element_text(size = 10, face = "bold"),
+        plot.subtitle = element_text(size = 8),
+        plot.caption = element_text(size = 8))
+
+```
+
+```{r graph 5 output, fig.width=8, fig.height= 3}
+#|fig.width: 8
+#|fig.height: 3
+
+QV_cluster
+```
+
+  The proportional plot shows how rates deviate from QV proportionality. But it doesn't explain why QV itself is so suburb-specific. If QV were driven primarily by property characteristics — size, age, land area — we'd expect similar houses in different suburbs to have similar QVs. The network plot (a force directed network, with k-nearest-neighbour similarity, k=3), proportional share decomposition.tests this. It connects each property to its three closest QV neighbours (many more and the plot would be unreadable) and shows where they fall. In the plot below, QV value calculated as $QV = CV + LV + (CV - LV)$ (QV, 2026). 
+
+  In the proportional 997-unit sample below, 96% of each property's top-3 QV neighbours are in the same suburb. Only 4% cross a suburb boundary. The similarity is strongest within a suburb but not specifically within a street. QV clustering operates at the suburb scale, not the street scale.
+
+  This means QV is set by location, not by the house itself. Two identical houses in different suburbs will have different QVs because the local market; demand, amenities, distance from CBD, school catchments, etc — sets the QV. A desirability premium that tracks the suburb's market position, not the property's physical attributes.
+
+
+
+# Two premiums, one bill
+
+  The rate bill is shaped by two distinct mechanisms:
+
+* A density premium, a fixed amount effect. Fixed per-property charges are a larger fraction of the bill in moderate-QV, high-density suburbs and a smaller fraction in high-QV, low-density areas (rural, Otamatea). This pushes dense suburbs above the proportional line and less dense ones below it.
+
+* A desirability premium, the QV effect. QV is set at the suburb level by the local market. Suburbs in higher demand have higher QV's across the board, which raises the proportional component of every rate bill in that suburb.
+
+  Taken together they mean the "each household pays according to value" statement is an oversimplification. The rate bill is shaped by where you live, how many neighbours share the fixed charges, and what the local market is willing to pay for that location.
+
+
+# So, are rates fair?
+
+  That depends on what "fair" means. If fairness means "your share of the bill equals your share of property value," then no — the fixed portion alone breaks that.  
+  If fairness means "people in the same suburb pay the same rate," then, after accounting for outliers, yes.   
+  If fairness means "you pay for what you use," then the fixed amount is regressive and the QV component is not.  
+
+  The data doesn't answer the question. It shows the mechanism. Whether the mechanism is fair is a question for the ratepayers.
+
+<br> 
+
+========================
+
+# References:
+
+1. Calculate.co.nz. (2026). *How Are Council Rates Calculated in NZ | Capital Value Explained*. https://www.calculate.co.nz/learning-center/council-rates-guide.php
+
+2. QV. (2026). *Understanding your rating value*. https://content.quotablevalue.co.nz/media/documents/QV_Understanding_Rating_Values_Guide.pdf
+
+3. Whanganui Council. (2026). *Rates*. https://www.whanganui.govt.nz/Property-and-Rates/Rates
