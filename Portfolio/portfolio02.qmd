@@ -1,0 +1,64 @@
+---
+title: "Portfolio 2: Daily use of He Ara Kotahi bridge"
+author: "John Lavack"
+format:
+  html:
+    embed-resources: true
+---
+
+```{r dont touch this code chunk, warning=FALSE}
+#| message: false
+#| echo: false
+
+library(tidyverse)
+
+walk_cycle <- read_csv("https://www.massey.ac.nz/~jcmarsha/data/pncc_cycle_counts/he_ara_kotahi_one_year.csv") |>
+  group_by(Date) |> summarise(Count = sum(Count)) |>
+  mutate(Day = wday(Date, label=TRUE))
+```
+
+## Your Figure
+
+```{r set up, warning=FALSE}
+library(ggdist)
+
+day_order <- c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+walk_cycle <- walk_cycle %>% mutate(Day = factor(Day, levels = day_order, ordered = TRUE))
+
+colours = tribble(~name, ~colour,
+        'Mon','#F1BB7B',
+        'Fri','#FD6467',
+        'Thu','#C6CDF7',
+        'Wed','#D67236',
+        'Tue','#E6A0C4',
+        'Sat','#7294D4',
+        'Sun','#D8A499') |>
+  deframe() # colors come from wesanderson package, Grandbudapest 1 and 2
+
+averages <- walk_cycle %>% group_by(Day) %>% 
+  summarise(average = round(mean(Count),0))
+
+outlier <- walk_cycle %>% filter(Count > 2400 | Count < 400)
+```
+
+
+
+```{r chart, fig.width=10, fig.height=10}
+walk_cycle %>% 
+  ggplot(aes(y = fct_rev(Day), x = Count, fill = Day)) +
+  stat_halfeye(mapping = aes(fill_ramp = after_stat(level)),
+               .width=c(.50,.80,.95)) +
+  geom_point(data = outlier, aes(y = Day, x = Count), show.legend = FALSE) + 
+  scale_fill_manual(values = colours) +
+  scale_fill_ramp_discrete(na.translate=FALSE) +
+  scale_x_continuous(breaks = seq(0, 3500, by = 200), limits = c(0,3500), expand = c(0, 0)) +
+  theme_minimal() + 
+  geom_text(data = averages, aes(y = fct_rev(Day), x = average, label = average), vjust = -1) +
+  geom_text(data = outlier %>% filter(Count == 3418 | Count == 139), aes(y = Day, x = Count, label = Count), vjust = -1) +
+  labs(title = 'The He Ara Kotahi Bridge is more used During the Weekend', 
+       subtitle = 'Greater variation occurs on the weekend. Tuesday through Friday corssing numbers are more consistent.',
+       y = '', 
+       x = 'Walker count',
+       caption = "Wider weekend spread indicates greater variation, higher weekday peaks indicate higher density for a given value. \nThis imples that during the week, crossers are habitual or purposeful, while on the weekend usage is more random, perhaps liesure oriented. \nSunday's extreme outlier roughly aligns with the end of lock downs in Palmerston North and the end of the mid semester 2 study break in 2020.") 
+```
+

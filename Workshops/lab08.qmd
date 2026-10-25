@@ -1,0 +1,278 @@
+---
+title: "Week 8 Tutorials: Spatial and Dynamic Networks"
+subtitle: "161.307 Reproducible Visualisation for Statistics"
+format:
+  html:
+    toc: true
+embed-resources: true
+execute:
+  warning: false
+message: false
+---
+
+## Overview
+
+1. **Tutorial 1 (45–50 min)** - Networks on maps
+2. **Tutorial 2 (45–50 min)** - Visualising change over time
+3. **Tutorial 3 (double)** - Capstone: simulated spread on a network,
+   with uncertainty and (optionally) space
+
+```{r}
+#| label: setup
+library(tidygraph)
+library(ggraph)
+library(ggplot2)
+library(dplyr)
+library(sf)
+library(patchwork)
+
+# theme_set(theme_yourcourse())
+```
+
+---
+
+## Tutorial 1: Networks on maps
+
+### 1.1 A spatial network dataset
+
+Use a small dataset with real coordinates — e.g. NZ regional centres
+(toy example below), or a dataset from earlier in the course (the
+choropleth/mapping weeks may already have a suitable `sf` object you
+can reuse).
+
+```{r}
+cities <- data.frame(
+  name = c("Auckland", "Wellington", "Christchurch", "Hamilton",
+           "Dunedin", "Tauranga", "Palmerston North"),
+  lon  = c(174.76, 174.78, 172.64, 175.28, 170.50, 176.17, 175.61),
+  lat  = c(-36.85, -41.29, -43.53, -37.78, -45.87, -37.69, -40.36),
+  population = c(1657000, 215100, 396700, 184900, 134600, 158300, 89300)
+)
+population <- setNames(cities$population, cities$name)
+
+# A simple set of edges (e.g. main connections between centres)
+edges <- data.frame(
+  from = c("Auckland","Auckland","Hamilton","Wellington","Wellington","Tauranga"),
+  to   = c("Wellington","Hamilton","Tauranga","Christchurch","Palmerston North","Christchurch")
+)
+
+g <- tbl_graph(nodes = cities, edges = edges, directed = FALSE)
+```
+
+### 1.2 Plotting with manual layout
+
+```{r}
+ggraph(g, layout = "manual", x = cities$lon, y = cities$lat) +
+  geom_edge_link(alpha = 0.5, colour = "steelblue") +
+  geom_node_point(aes(size = population), colour = "darkred") +
+  geom_node_text(aes(label = name), repel = TRUE, size = 3) +
+  scale_size_area(max_size = 10) +
+  coord_fixed(ratio = 1.4) +
+  theme_minimal() +
+  labs(title = "A spatial network of NZ centres",
+       x = "Longitude", y = "Latitude", size = "Population")
+```
+
+**Exercise 1.1** - Find an `sf` polygon dataset of NZ regions (e.g.
+`rnaturalearth`, or one reused from the choropleth weeks). Plot it with
+`geom_sf()` as a background layer, then overlay the network from above.
+Check the CRS of both layers (`st_crs()`). If they differ, use
+`st_transform()` so they align.
+
+### 1.3 Edge width as flow strength
+
+**Exercise 1.2** - Add an edge attribute (e.g. invent a "flow" value,
+or compute one as `pmin(population[from], population[to])`), and map
+it to `geom_edge_link(aes(width = flow))`. Use `scale_edge_width()` to
+control the range. Discuss: at what point would this network have too
+many edges for width-encoding to remain readable, and what would you
+do instead (refer back to Week 7's hairball discussion)?
+
+---
+
+## Tutorial 2: Visualising change over time
+
+### 2.1 A network that grows over time
+
+```{r}
+nodes <- data.frame(name = LETTERS[1:8])
+
+all_edges <- data.frame(
+  from = c("A","A","B","C","D","A","E","F","G","B"),
+  to   = c("B","C","C","D","E","F","F","G","H","H"),
+  time = c(1,1,1,2,2,2,3,3,3,4)
+)
+```
+
+### 2.2 Small multiples (snapshots)
+
+```{r}
+make_snapshot <- function(t) {
+  edges_t <- all_edges |> filter(time <= t)
+  g_t <- tbl_graph(nodes = nodes, edges = edges_t, directed = FALSE)
+  ggraph(g_t, layout = "fr") +
+    geom_edge_link(alpha = 0.5) +
+    geom_node_point(size = 3) +
+    geom_node_text(aes(label = name), repel = TRUE, size = 3) +
+    theme_void() +
+    labs(title = paste("t =", t))
+}
+
+# NOTE: each call to ggraph(layout = "fr") re-runs the layout algorithm,
+# so node positions may move between panels. See Exercise 2.1.
+wrap_plots(lapply(1:4, make_snapshot), nrow = 1)
+```
+
+**Exercise 2.1** - The snapshots above likely show nodes "jumping
+around" between panels, because each panel recomputes its own
+force-directed layout. Fix this by computing **one** layout using the
+*final* (most complete) network, extracting node coordinates
+(`create_layout()`), and reusing those fixed coordinates
+(`layout = "manual", x = ..., y = ...`) for every snapshot. Regenerate
+the small multiples. How does this change your interpretation of
+"network growth" across panels?
+
+### 2.3 Animation (optional, time permitting)
+
+**Exercise 2.2 (optional)** - If `gganimate` is available, animate the
+snapshots from 2.2 (fixed layout) as a `transition_states()` animation.
+Compare the animated version to the small-multiples version: which
+makes it easier to (a) see the *final* network structure, (b) see *when*
+a particular edge was added? Relate this back to the Week 5
+spaghetti-vs-small-multiples discussion: what's the temporal analogue
+of "overplotting" here?
+
+---
+
+## Tutorial 3 (double session): Capstone simulated spread with uncertainty
+
+### Short session: A simple epidemic-on-network simulation
+
+We will use a small fixed network and a very simple stochastic SIR-type
+process: at each time step, each infected node infects each susceptible
+neighbour independently with probability `p_infect` (or `beta` in the lectures), 
+and each infected node recovers with probability `p_recover` (or `gamma` in the 
+lectures).
+
+```{r}
+set.seed(1)
+
+# A moderately sized random network
+n_nodes <- 30
+g_sim <- play_erdos_renyi(n_nodes, p = 0.08, directed = FALSE) |>
+  mutate(name = as.character(1:n_nodes))
+
+adj <- as.matrix(igraph::as_adjacency_matrix(g_sim))
+
+simulate_sir <- function(adj, p_infect = 0.15, p_recover = 0.1,
+                          n_steps = 30, seed) {
+  set.seed(seed)
+  n <- nrow(adj)
+  status <- rep("S", n)
+  status[sample(1:n, 1)] <- "I"  # one initial infection
+
+  history <- matrix(NA_character_, nrow = n_steps, ncol = n)
+  history[1, ] <- status
+
+  for (t in 2:n_steps) {
+    infected <- which(status == "I")
+    susceptible <- which(status == "S")
+
+    new_infections <- c()
+    for (s in susceptible) {
+      neighbours <- which(adj[s, ] == 1)
+      n_infected_neighbours <- sum(neighbours %in% infected)
+      if (n_infected_neighbours > 0) {
+        prob_escape <- (1 - p_infect)^n_infected_neighbours
+        if (runif(1) > prob_escape) new_infections <- c(new_infections, s)
+      }
+    }
+
+    recoveries <- infected[runif(length(infected)) < p_recover]
+
+    status[new_infections] <- "I"
+    status[recoveries] <- "R"
+    history[t, ] <- status
+  }
+
+  history
+}
+
+# One realisation
+hist1 <- simulate_sir(adj, seed = 1)
+```
+
+**Exercise 3.1** - Compute, for `hist1`, the number of S/I/R individuals
+at each time step (e.g. `apply(hist1, 1, table)`). Plot these three
+counts over time as a simple line plot (three lines, one per
+compartment). This is the "compartment trajectory" idiom from Lecture
+2, and structurally identical to a Week 5 single-realisation plot.
+
+### Long session (after break)
+
+#### Panel A: Network snapshot
+
+**Exercise 3.2** - Choose a time point `t` partway through the
+epidemic (e.g. where I is near its peak in `hist1`). Build a
+`tbl_graph` from `g_sim`, add a `status` node attribute from
+`hist1[t, ]`, and plot with `geom_node_point(aes(colour = status))`
+using a clear S/I/R colour scheme (e.g. grey/red/blue). This is Panel A
+of your capstone figure.
+
+#### Panel B: Multiple runs with uncertainty ribbon
+
+```{r}
+n_sims <- 100
+n_steps <- 30
+
+results <- lapply(1:n_sims, function(i) {
+  h <- simulate_sir(adj, seed = i, n_steps = n_steps)
+  data.frame(
+    sim = i,
+    time = 1:n_steps,
+    n_infected = rowSums(h == "I")
+  )
+})
+results <- bind_rows(results)
+```
+
+**Exercise 3.3** - Using `results`, build a ribbon plot of `n_infected`
+over time (median + 50%/90% bands across the 100 simulations). This is
+*exactly* the Week 5/6 ribbon code, applied to a new variable. This is
+Panel B of your capstone figure.
+
+#### Panel C: Spatial view (optional, if coordinates available)
+
+**Exercise 3.4 (optional)** - If you have or can assign coordinates to
+the 30 nodes (e.g. random points within a region, or real locations if
+relevant to your data), reuse Tutorial 1's `layout = "manual"` approach
+to plot Panel A's network snapshot on a map instead of an abstract
+layout.
+
+#### Assembling the capstone figure
+
+**Final task** - Combine Panels A and B (and C if completed) into a
+single multi-panel figure using `patchwork`. Add:
+
+- A overall title and panel labels (e.g. `plot_annotation(tag_levels = "A")`)
+- A short caption stating the simulation parameters (`p_infect`,
+  `p_recover`, network size, number of simulation runs, and **seeds
+  used**); this is the reproducibility record for a stochastic figure
+
+Accompany the figure with a written rationale (~250 words) addressing:
+
+- Which week's material does each panel draw on? Be explicit (e.g.
+  "Panel B uses the ribbon technique from Week 5/6, applied to...")
+- What does the multi-panel figure communicate that no single panel
+  could on its own?
+- What design choices (colour, layout, theme) did you make to keep the
+  panels visually consistent with each other and with the course's
+  established conventions?
+- Reference at least two course readings spanning at least two
+  different weeks' topics (e.g. one network reference, one
+  uncertainty/visualisation reference).
+
+This figure and write-up form the course's capstone deliverable,
+integrating simulation (Week 5), uncertainty (Week 6), network
+visualisation (Week 7), and spatial/dynamic network visualisation
+(Week 8).

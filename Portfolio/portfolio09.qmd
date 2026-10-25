@@ -1,0 +1,142 @@
+---
+title: "Portfolio 9: Where does the time go?"
+author: "John Lavack 20001249"
+date: "29 September 2026"
+date-format: "DD MMM YYYY"
+lang: en-GB
+format: 
+  html:
+    toc: true
+    toc-depth: 3
+    toc-float: true
+    number-sections: false
+    number-offset: -1
+    theme: cosmo
+    highlight-style: github
+    code-fold: false
+    self-contained: true
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+Use the `economics` dataset from `ggplot2` package (we also explored this in the lab) produced from US economic time series data available from https://fred.stlouisfed.org/. 
+
+
+```{r load data}
+#| message: false
+#| echo: false
+
+library(tidyverse)
+
+data(economics, package = 'ggplot2')
+
+ggplot(economics) +
+  aes(x = date, y = psavert) +
+  geom_line() +
+  labs(title = "Personal Savings Rate",
+       x = "Date",
+       y = "Personal Savings Rate")
+```
+
+
+## Make variables
+
+```{r variables}
+chart_data <- economics %>%
+  mutate(
+    year = as.integer(year(date))) %>%
+  group_by(year) %>%
+  summarise(
+    median_saving_rate = median(psavert),
+    median_unemployment_rate = median(uempmed),
+    .groups = 'drop'
+  ) %>%
+  mutate(
+    change_median_saving_rate = median_saving_rate - lag(median_saving_rate),
+    change_median_unemployment_rate = median_unemployment_rate - lag(median_unemployment_rate)
+  ) %>%
+  na.omit() #drop first year as it has no lag. 
+
+```
+
+## Your Figure
+
+```{r figure}
+#| fig-align: center
+#| fig-width: 10
+
+
+# make an appropriate figure
+chart_data %>%
+  ggplot(aes(x = year)) +
+  #shaded recessions
+  annotate("rect", xmin = 1969, xmax = 1971, ymin = -Inf, ymax = Inf,
+           fill = "grey", alpha = 0.2) +
+  annotate("rect", xmin = 1973, xmax = 1976, ymin = -Inf, ymax = Inf,
+           fill = "grey", alpha = 0.2) +
+  annotate("rect", xmin = 1981, xmax = 1983, ymin = -Inf, ymax = Inf,
+           fill = "grey", alpha = 0.2) +
+  annotate("rect", xmin = 1990, xmax = 1993, ymin = -Inf, ymax = Inf,
+           fill = "grey", alpha = 0.2) +
+  annotate("rect", xmin = 2001, xmax = 2003, ymin = -Inf, ymax = Inf,
+           fill = "grey", alpha = 0.2) +
+  annotate("rect", xmin = 2007, xmax = 2010, ymin = -Inf, ymax = Inf,
+           fill = "grey", alpha = 0.2) +
+  geom_hline(aes(yintercept = 0), col = "#18171e", linetype = "dashed") +
+  #text annotation
+  annotate("text", x = 1969.5, y = 5, label = "Defense drawdown &\nNixon shock",
+           size = 3, colour = "grey40") +
+  annotate("text", x = 1974.5, y = Inf, label = "OPEC oil embargo &\nStagflation",
+           vjust = 1, size = 3, colour = "grey40") +
+  annotate("text", x = 1982.5, y = Inf, label = "Volcker shock",
+           vjust = 1.5, size = 3, colour = "grey40") +
+  annotate("text", x = 1991.5, y = Inf, label = "Gulf war",
+           vjust = 1.5, size = 3, colour = "grey40") +
+  annotate("text", x = 2002.5, y = Inf, label = "Dot-com bust",
+           vjust = 1.5, size = 3, colour = "grey40") +
+  annotate("text", x = 2009, y = Inf, label = "Global financial crisis",
+           vjust = 1.5, size = 3, colour = "grey40") +
+  #and the rest
+  # geom_vline(xintercept = c(1975, 1982, 1992, 2002, 2009), col = "#18171e", linetype = "dashed") +
+  geom_line(aes(y = change_median_saving_rate, col = "Savings")) +
+  geom_line(aes(y = change_median_unemployment_rate, col = "Unemployment")) +
+  #annotations
+  
+  #scale arguments
+  scale_color_manual(values = c(
+    "Savings" = "#a93413",
+    "Unemployment" = "#718346"
+    ), 
+    name = "Change in median rate:"
+  ) +
+  scale_x_continuous(
+    breaks = seq(min(chart_data$year), max(chart_data$year), by = 4),
+    minor_breaks = seq(min(chart_data$year), max(chart_data$year), by = 1)
+  ) +
+  scale_y_continuous(
+    breaks = scales::breaks_width(0.5),
+    minor_breaks = scales::breaks_width(0.25)
+  ) +
+  #labels
+  labs(title = "Precautionary saving closely follows unemployment.",
+       subtitle = "Saving rates increase in periods of recession, and decrease in periods of expansion,/n as seen in the pattern of the six major economic shocks from 1967 to 2015",
+       caption = "This pattern puts lots of financial strain on households. \nWhy? Because most people don't save when they have spare cash, they spend it",
+       y = "Year on year rate change",
+       x = "Year") +
+  #theme
+  theme_minimal() +
+  theme(
+    legend.position = "top",
+    plot.title = element_text(size = 20),
+    plot.subtitle = element_text(size = 12),
+   )
+```
+
+
+## Explanation
+
+Overall, saving rates are trending downwards, with what looks like a reversal following the global financial crisis (GFC) of 2008. The chart above shows that unemployment and saving rates move pretty similarly through time. Events shock the economy, like the post Vietnam war defence draw down, the Nixon shock, the OPEC oil embargo, the Gulf war and the GFC. These shocks cause the economy to contract. Most businesses do not operate with sufficient margins to sustain all their employees is period of economic contraction, so people lose their jobs. Unemployment increases. Saving increase at the worst time to start saving - when the recession hits. Eventually the economy recovers. Businesses can hire again and savings decrease as people spend more.  
+This demonstrates the income elasticity of consumption and the supply and demand of labour. 
+It is conventional wisdom to 'make hay while the sun is shining'. However, this is seldom practised, because, as if often said, 'money burns a hole through your pockets'. People make decisions to solve proximal problems. Problems that are both near and urgent. We aren't very good at thinking ahead towards future financial security.

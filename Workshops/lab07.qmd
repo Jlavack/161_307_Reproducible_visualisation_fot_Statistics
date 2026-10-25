@@ -1,0 +1,567 @@
+---
+title: "Week 7 Tutorials: Network Data - Fundamentals and Static Visualisation"
+subtitle: "161.307 Reproducible Visualisation for Statistics"
+format:
+  html:
+    toc: true
+embed-resources: true
+execute:
+  warning: false
+message: false
+---
+  
+  ## Overview
+  
+1. **Tutorial 0 (20-25 min)** - Warm-up: random graphs, a bridge from
+Week 5
+2. **Tutorial 1 (45-50 min)** - Building and plotting a basic network
+3. **Tutorial 2 (45-50 min)** - Encoding attributes
+4. **Tutorial 3 (double)** - Alternatives to node-link diagrams, plus
+uncertainty about network statistics (a bridge from Week 6)
+5. **Tutorial 4 (optional extension)** - A first taste of spread on a
+network, previewing Week 8
+
+Throughout, keep a running note of every `set.seed()` you use for a
+stochastic layout or simulation.
+
+```{r}
+#| label: setup
+library(tidygraph)
+library(ggraph)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+
+# theme_set(theme_yourcourse())
+```
+
+---
+  
+## Tutorial 0: Warm-up - random graphs, a bridge from Week 5
+  
+### 0.1 Simulating an Erdős-Rényi graph
+  
+  Before we touch any real data, let's do what Week 5 trained us to do
+first: write down a generating process and simulate from it.
+
+```{r}
+set.seed(2026)
+n <- 50
+p <- 0.06
+
+g_er <- play_erdos_renyi(n, p, directed = FALSE)
+
+set.seed(1)
+ggraph(g_er, layout = "fr") +
+  geom_edge_link(alpha = 0.3) +
+  geom_node_point(size = 2) +
+  theme_void() +
+  labs(title = paste0("Erdos-Renyi random graph: n = ", n, ", p = ", p))
+```
+
+**Exercise 0.1** - Regenerate `g_er` with (a) the same `n` but a
+smaller `p`, and (b) the same `p` but a larger `n`. In one sentence
+each, describe how the plot changes. Which parameter controls how
+*dense* the network looks, and which controls how *big* it looks?
+
+### 0.2 Degree distribution vs the Poisson overlay
+
+```{r}
+set.seed(2026)
+n <- 300; p <- 0.02
+g_er2 <- play_erdos_renyi(n, p, directed = FALSE) |>
+  activate(nodes) |> mutate(degree = centrality_degree())
+
+deg_df <- g_er2 |> activate(nodes) |> as_tibble()
+lambda <- (n - 1) * p
+
+ggplot(deg_df, aes(degree)) +
+  geom_bar(aes(y = after_stat(prop)), fill = "steelblue", alpha = 0.6) +
+  geom_point(data = data.frame(degree = 0:15, prop = dpois(0:15, lambda)),
+             aes(degree, prop), colour = "firebrick", size = 2) +
+  labs(title = paste0("Empirical degree distribution vs Poisson(",
+                       round(lambda, 1), ")"),
+       x = "Degree", y = "Proportion of nodes") +
+  theme_minimal()
+```
+
+**Exercise 0.2** - This should look familiar: it's Week 5's "many
+identical outbreaks" logic, applied to a *pair of nodes* instead of a
+*case count*. In 2/3 sentences, explain in your own words why each
+node's degree in $G(n,p)$ is approximately Poisson-distributed for
+large $n$ and small $p$. (Hint: think about the $n-1$ independent
+                          coin-flips each node makes.)
+
+**Exercise 0.3** - Increase `p` to 0.1 while keeping `n = 300`, so
+$np$ is no longer small. Does the Poisson overlay still fit well? Why
+or why not (what assumption behind the Poisson approximation starts
+            to break)?
+  
+### 0.3 A heavier-tailed alternative
+  
+```{r}
+set.seed(2026)
+g_ba <- igraph::sample_pa(n = 150, power = 1, m = 1, directed = FALSE) |>
+  as_tbl_graph() |>
+  activate(nodes) |> mutate(degree = centrality_degree())
+
+ba_df <- g_ba |> activate(nodes) |> as_tibble()
+
+ggplot(ba_df, aes(degree)) +
+  geom_histogram(binwidth = 1, fill = "darkorange", alpha = 0.7) +
+  scale_y_log10() +
+  labs(title = "Barabasi-Albert (preferential attachment) degree distribution",
+       subtitle = "Note the log y-axis: a few very high-degree hubs",
+       x = "Degree", y = "Count (log scale)") +
+  theme_minimal()
+```
+
+**Exercise 0.4** - Compare this histogram to the Erdős-Rényi one from
+0.2 (same `x` axis, roughly the same `n`). In 2/3 sentences: which
+model would you pick as a *contact network* for an infectious disease,
+and what does the answer imply about how a single highly-connected
+individual could affect an outbreak? Keep this answer. You will want it
+again in Week 8.
+
+---
+
+## Tutorial 1: Building and plotting a basic network
+
+### 1.1 A small dataset
+
+We'll use a small, easy-to-inspect network to start. Either use the
+built-in `highschool` dataset (igraph/ggraph) or a dataset you've
+prepared (e.g. co-authorship, contact network from a previous course).
+
+```{r}
+data(highschool, package = "ggraph")
+head(highschool)
+```
+
+```{r}
+g <- as_tbl_graph(highschool, directed = FALSE)
+g
+```
+
+**Exercise 1.1** - Inspect `g |> activate(nodes) |> as_tibble()` and
+`g |> activate(edges) |> as_tibble()`. How many nodes and edges are
+there? Is the network directed or undirected? Does that match your
+expectation given the data?
+
+### 1.2 Moving between representations
+
+```{r}
+adj <- igraph::as_adjacency_matrix(g, sparse = FALSE)
+adj[1:6, 1:6]
+```
+
+**Exercise 1.2** - Confirm for yourself that the edge list and the
+adjacency matrix carry the same information: pick any two pupils who
+appear connected in `adj`, and check that the corresponding row exists
+in `g |> activate(edges) |> as_tibble()`. Which representation would
+you reach for if you needed to quickly look up *all of one pupil's
+friends*. Why?
+  
+  ### 1.3 A default plot
+  
+```{r}
+set.seed(1)
+ggraph(g, layout = "fr") +
+  geom_edge_link(alpha = 0.3) +
+  geom_node_point(size = 2) +
+  theme_void() +
+  labs(title = "Highschool friendship network (force-directed)")
+```
+
+### 1.4 Trying different layouts
+
+**Exercise 1.3** - Produce the same plot with at least three different
+`layout` arguments to `ggraph()` (try `"fr"`, `"circle"`, `"kk"`,
+                                  `"stress"`; see `?layout_tbl_graph` for options). Arrange them with
+`patchwork` for comparison. For each, write one sentence: what
+structure (if any) becomes more or less visible?
+  
+  > **Reproducibility checkpoint**: record the seed used for any
+> stochastic layout (e.g. `"fr"`) so the figure can be regenerated
+> identically.
+
+### 1.5 Summary statistics beyond degree
+
+```{r}
+tibble::tibble(
+  density    = igraph::edge_density(g),
+  n_nodes    = igraph::vcount(g),
+  n_edges    = igraph::ecount(g),
+  components = igraph::components(g)$no
+)
+```
+
+> **Note**: we call `igraph::` functions directly on `g` here rather
+> than routing through `dplyr::summarise()`. The latter needs a
+> `summarise.tbl_graph` method to be found via S3 dispatch, which can
+> silently fail with `no applicable method for 'summarise'` if your R
+> session doesn't have `tidygraph` fully attached when you run the
+> chunk in isolation. Calling `igraph::` functions sidesteps that
+> entirely. A `tbl_graph` *is* an `igraph` object underneath.
+
+**Exercise 1.4** - Compute the same four statistics for your
+Erdős-Rényi graph `g_er` from Tutorial 0 (same `n` as `highschool` if
+you want a fair comparison; regenerate with `n = igraph::vcount(g)`).
+Which statistic differs most between the real and simulated network,
+and what does that tell you about how "friendship" networks differ
+from purely random ones?
+
+---
+
+## Tutorial 2: Encoding attributes
+
+### 2.1 Computing node attributes
+
+```{r}
+g2 <- g |>
+  activate(nodes) |>
+  mutate(
+    degree = centrality_degree(),
+    component = as.factor(group_components())
+  )
+
+g2 |> activate(nodes) |> as_tibble() |> head()
+```
+
+### 2.2 Encoding degree as size and colour
+
+```{r}
+set.seed(1)
+ggraph(g2, layout = "fr") +
+  geom_edge_link(alpha = 0.2) +
+  geom_node_point(aes(size = degree, colour = degree)) +
+  scale_colour_viridis_c() +
+  scale_size_area(max_size = 6) +
+  theme_void() +
+  labs(title = "Node degree encoded as size and colour")
+```
+
+**Exercise 2.1** - The plot above uses *both* size and colour for the
+same variable (degree), a redundant encoding. Produce two alternative
+versions: (a) size only, (b) colour only (constant size). In 2/3
+sentences, discuss whether the redundant encoding in the original is
+helpful or unnecessary here, and whether your answer would change for
+a colourblind reader (consider `scale_colour_viridis_c()` vs a
+red-green palette).
+
+### 2.3 A second centrality measure
+
+Degree isn't the only way to describe "importance" in a network.
+
+```{r}
+g2 <- g2 |>
+  mutate(betweenness = centrality_betweenness())
+
+g2 |> activate(nodes) |> as_tibble() |>
+  ggplot(aes(degree, betweenness)) +
+  geom_point(alpha = 0.6) +
+  labs(title = "Degree vs betweenness centrality",
+       x = "Degree", y = "Betweenness") +
+  theme_minimal()
+```
+
+**Exercise 2.2** - Find the pupil(s) with high betweenness but only
+moderate degree. In 1-2 sentences, explain in plain language what that
+combination means about their position in the friendship network
+(hint: think "bridge between groups" rather than "popular"). This
+distinction matters directly for epidemic modelling: which kind of
+node would you rather vaccinate first, and why? (No need to compute 
+anything further, just reason about it from the definitions.)
+
+### 2.4 Edge attributes: worked examples
+
+Two worked examples, one for a continuous weight and one for a
+categorical attribute. Both reuse `g` from Tutorial 1.
+
+**Weight → width**
+  
+```{r}
+edge_weights <- highschool |>
+  count(from, to, name = "weight")
+
+g_w <- as_tbl_graph(edge_weights, directed = FALSE)
+
+set.seed(1)
+ggraph(g_w, layout = "fr") +
+  geom_edge_link(aes(width = weight), alpha = 0.4, colour = "steelblue") +
+  scale_edge_width(range = c(0.3, 2.5)) +
+  geom_node_point(size = 1.5) +
+  theme_void() +
+  labs(title = "Edge width = number of years a friendship was reported",
+       edge_width = "Weight")
+```
+
+`count(from, to)` collapses the 1957/1958 edge list into one weighted
+edge per pair; `scale_edge_width(range = ...)` caps how extreme the
+width contrast gets. An uncapped scale makes a 2x weight difference
+look far more dramatic than it is.
+
+**Category → colour**
+  
+```{r}
+g_year <- as_tbl_graph(highschool, directed = FALSE)
+
+set.seed(1)
+ggraph(g_year, layout = "fr") +
+  geom_edge_link(aes(colour = factor(year)), alpha = 0.5) +
+  geom_node_point(size = 1.5, colour = "grey30") +
+  scale_edge_colour_manual(values = c("steelblue", "firebrick")) +
+  theme_void() +
+  labs(title = "Edge colour = survey year", edge_colour = "Year")
+```
+
+Here the edge attribute is **categorical**, not a magnitude, so
+colour (not width) is the natural channel: width would falsely
+imply 1957 and 1958 sit on an ordered "more/less" scale.
+
+**Exercise 2.3** - Using the two examples above as a template:
+  
+  (a) Produce a version of the width plot with `scale_edge_width()`'s
+`range` argument *removed* (i.e. let ggraph pick the default range).
+Compare it to the capped version above: does the uncapped version
+overstate the weight-2 edges?
+
+(b) Produce a version of the colour plot that instead maps `year` to
+**alpha** rather than colour (e.g. `geom_edge_link(aes(alpha =
+factor(year)))`). In 1/2 sentences, is alpha a good substitute for
+colour here, or does it lose information the colour version kept?
+
+(c) If your own dataset has a natural edge weight or category instead
+of `year`, repeat whichever of the two examples fits, and note one
+design decision you had to make that didn't come up with the
+`highschool` data.
+
+### 2.5 Applying course styling
+
+**Exercise 2.4** - Apply the colour palette, font, and theme
+conventions you've used in earlier weeks to one of your network plots
+above. Note any places where the conventions "don't quite work" for
+network plots (e.g. does `theme_void()` conflict with a custom theme
+that sets axis text?) and how you resolved it.
+
+---
+
+## Tutorial 3 (double session): Alternatives to node-link diagrams, and uncertainty about network statistics
+
+### Short session: Adjacency matrix view
+
+```{r}
+library(reshape2)
+
+adj <- as.matrix(igraph::as_adjacency_matrix(g))
+adj_df <- melt(adj)
+
+ggplot(adj_df, aes(Var1, Var2, fill = value)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "steelblue") +
+  coord_equal() +
+  theme_minimal() +
+  theme(axis.text = element_blank()) +
+  labs(title = "Adjacency matrix: highschool network",
+       x = NULL, y = NULL, fill = "Edge")
+```
+
+**Exercise 3.1** - The order of nodes in the matrix above is arbitrary
+(the order they appear in the data). Reorder nodes by `component` or by
+`degree` (e.g. using `arrange()` on the node table before extracting
+the adjacency matrix, or reindexing rows/columns of `adj`). Does
+reordering reveal block structure that wasn't visible before?
+
+### Long session (after break)
+
+#### Arc diagram
+
+```{r}
+# A simple arc diagram using ggraph's "linear" layout
+set.seed(1)
+ggraph(g2, layout = "linear") +
+  geom_edge_arc(alpha = 0.2) +
+  geom_node_point(aes(colour = component), size = 2) +
+  theme_void() +
+  labs(title = "Arc diagram, nodes in default order")
+```
+
+**Exercise 3.2** - Reorder nodes (e.g. `mutate(g2, ... ) |> arrange(component)`
+before plotting, or use the `sort.by` argument if available in your
+layout) so that nodes in the same component are adjacent. Compare the
+"default order" and "sorted by component" arc diagrams. Which is more
+informative, and why?
+
+#### Comparative critique
+
+**Exercise 3.3** - Using the *same* network (highschool or your own),
+produce three plots side by side: (1) node-link (best layout from
+Tutorial 1), (2) adjacency matrix (best ordering from above), (3) arc
+diagram (best ordering from above). Write a structured comparison
+(~200 words) addressing:
+
+- Which representation best shows **overall density** of the network?
+- Which best shows **community/cluster structure**?
+- Which would you choose for an audience **unfamiliar** with network
+  diagrams, and why?
+- Reference Kolaczyk & Csárdi and/or the Handbook of Data Visualization
+  in your answer.
+
+---
+
+### Bridge from Week 6: a network statistic is a point estimate too
+
+A single computed network statistic (mean degree, one node's
+centrality) came from **one observed network**. Just as with a sample
+mean in Week 6, we can ask: how much would this number change if we'd
+observed a slightly different network?
+
+#### 3.4 Bootstrapping the mean degree
+
+```{r}
+set.seed(2026)
+boot_mean_degree <- function(g) {
+  nodes_tbl <- g |> activate(nodes) |> as_tibble()
+  n <- nrow(nodes_tbl)
+  resampled <- sample(seq_len(n), n, replace = TRUE)
+  sub <- igraph::induced_subgraph(g, unique(resampled))
+  mean(igraph::degree(sub))
+}
+
+boot_dist <- replicate(500, boot_mean_degree(g))
+head(boot_dist)
+```
+
+**Exercise 3.4** - Plot `boot_dist` as (a) a histogram and (b) a
+density curve, reusing your Week 6 Tutorial code directly (this is
+literally the same bootstrap-then-visualise pipeline, applied to a
+new statistic). Report the 90% bootstrap interval
+(`quantile(boot_dist, c(0.05, 0.95))`) and state in one sentence what
+this interval represents ("if we resampled nodes this way many times,
+90% of the resulting mean-degree estimates would fall in this range").
+
+#### 3.5 Don't dynamite-plot it
+
+```{r}
+summ <- data.frame(mean = mean(boot_dist), se = sd(boot_dist))
+
+p_dynamite <- ggplot(summ, aes(x = "Highschool net", y = mean)) +
+  geom_col(fill = "grey70", width = 0.4) +
+  geom_errorbar(aes(ymin = mean - se, ymax = mean + se), width = 0.1) +
+  labs(title = "Bad: bar + error bar", x = NULL, y = "Mean degree") +
+  theme_minimal()
+
+p_dots <- ggplot(data.frame(x = boot_dist), aes(x)) +
+  ggdist::stat_dotsinterval(quantiles = 50, fill = "steelblue") +
+  scale_y_continuous(NULL, breaks = NULL) +
+  labs(title = "Better: quantile dotplot", x = "Mean degree") +
+  theme_minimal()
+
+p_dynamite + p_dots
+```
+
+**Exercise 3.5** - In 3/4 sentences: what does the dynamite-plot
+version of this figure hide that the dotplot version shows? Then
+identify which *kind* of uncertainty this bootstrap actually
+represents. Is it closer to Week 6's **sampling uncertainty** (as if
+the highschool pupils were a sample from a larger population) or to
+Week 5's **simulation variability** (as if the network itself were one
+draw from a random-graph model)? Justify your answer, and note that
+the two framings would call for different-looking captions even though
+the plot code is identical.
+
+#### 3.6 Comparing degree distributions across node types (violin)
+
+```{r}
+g2 |> activate(nodes) |> as_tibble() |>
+  ggplot(aes(component, degree)) +
+  geom_violin(fill = "steelblue", alpha = 0.4) +
+  geom_jitter(width = 0.05, alpha = 0.5) +
+  labs(title = "Degree distribution by connected component",
+       x = "Component", y = "Degree") +
+  theme_minimal()
+```
+
+**Exercise 3.6** - Is there a component whose degree distribution
+looks meaningfully different in shape (not just mean) from the others)?
+Would a bar-plus-error-bar summary have shown you this? Use this as a
+second, worked example of the Week 6 "show more of the distribution"
+principle applied to network data.
+
+---
+
+## Tutorial 4 (optional extension): A first taste of spread on a network
+
+This section previews Week 8. It's optional this week, but the code
+you write here will drop almost unchanged into next week's capstone.
+
+### 4.1 A branching process, constrained by structure
+
+Week 5's branching process assumed anyone could infect anyone. Here,
+infection can only travel along edges of a contact network.
+
+```{r}
+set.seed(2026)
+n <- 60
+g_contact <- play_erdos_renyi(n, p = 0.06, directed = FALSE)
+adj <- as.matrix(igraph::as_adjacency_matrix(g_contact))
+
+simulate_on_network <- function(adj, p_infect = 0.3, max_steps = 15) {
+  n <- nrow(adj)
+  infected <- rep(FALSE, n); infected[sample(n, 1)] <- TRUE
+  new_cases <- sum(infected)
+  for (t in 1:max_steps) {
+    current <- which(infected)
+    candidates <- which(!infected)
+    would_infect <- sapply(candidates, function(j) {
+      neighbours_infected <- sum(adj[j, current] == 1)
+      runif(1) < 1 - (1 - p_infect)^neighbours_infected
+    })
+    newly <- candidates[would_infect]
+    if (length(newly) == 0) break
+    infected[newly] <- TRUE
+    new_cases <- c(new_cases, length(newly))
+  }
+  new_cases
+}
+
+curve <- simulate_on_network(adj)
+
+ggplot(data.frame(step = seq_along(curve), new_cases = curve),
+       aes(step, new_cases)) +
+  geom_line() + geom_point() +
+  labs(title = "New cases per step, spread constrained to network edges",
+       x = "Step", y = "New cases") +
+  theme_minimal()
+```
+
+**Exercise 4.1** - Run `simulate_on_network()` with several different
+seeds, keeping `adj`, `p_infect`, and `max_steps` fixed. Plot the
+resulting curves as a small-multiples panel (`facet_wrap`), the same
+way Week 5 Tutorial 2 handled many random-walk realisations. Do some
+runs fizzle out almost immediately while others take off, even though
+every run used the *same* network and the *same* infection
+probability?
+
+**Exercise 4.2 (extension)** - Repeat Exercise 4.1 but swap `g_contact`
+for the Barabási-Albert graph `g_ba` from Tutorial 0 (rebuild `adj`
+accordingly). Does an outbreak starting at a random node behave
+differently on a heavy-tailed contact network than on an
+Erdős-Rényi one? What if you deliberately start the outbreak at the
+highest-degree node instead of a random one (`which.max(degree(...))`
+)? Keep your code and your answer. Week 8's capstone builds a full
+S/I/R model and a multi-run ribbon plot directly on top of this
+pattern.
+
+### Looking ahead to Week 8
+
+Next week we add two new dimensions to networks: **space** (nodes have
+geographic coordinates, edges drawn on maps) and **time** (networks
+that evolve, e.g. epidemic spread). The representation/encoding
+choices from this week (node-link vs matrix vs arc, attribute
+encodings) still apply. But they are now layered onto a basemap or a sequence
+of snapshots. Your Tutorial 3 bootstrap code and your Tutorial 4
+network-constrained branching process are both direct inputs to Week
+8's capstone figure, which combines simulation (Week 5), uncertainty
+(Week 6), and network visualisation (Week 7) into a single multi-panel
+figure with space and time layered on top.

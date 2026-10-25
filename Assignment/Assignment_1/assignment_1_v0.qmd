@@ -1,0 +1,561 @@
+---
+title: "161.307: Assignment 1"
+author: "John Lavack 20001249"
+format:
+  html:
+    toc: true   
+    toc-depth: 3    
+    toc-location: left 
+    embed-resources: true
+knitr:
+  opts_chunk:
+    # fig.width: 10
+    # fig.asp: 0.5
+    # out.width: "200%"
+    # out.height: "200%"
+    dev: 'ragg_png'
+---
+
+
+```{r, message=FALSE, warning = FALSE}
+library(tidyverse)
+library(ggtext)
+library(showtext)
+library(marquee)
+library(stringr)
+library(ggdist)
+library(glue)
+
+olympics <- read_csv("https://www.massey.ac.nz/~jcmarsha/data/olympics.csv")
+likely   <- read_csv("https://www.massey.ac.nz/~jcmarsha/data/likely/likely_judgements.csv")
+metadata <- read_csv("https://www.massey.ac.nz/~jcmarsha/data/likely/likely_respondents.csv")
+
+lawa <- read_csv("https://www.massey.ac.nz/~jcmarsha/data/LAWA/lawa49.csv")
+```
+
+This file is where you write your answers. The questions are linked from stream.
+
+**MAKE SURE YOU CAN RENDER THIS DOCUMENT BEFORE YOU START**
+
+## Exercise 1
+
+### 1.1
+
+Which disciplines have the most events at the olympics?
+
+```{r Olympics Q1 wrangling}
+#Your chart must distinguish all event types (medal, non-medal, training) for each discipline.
+# Your chart must incorporate at least one of facetting or the use of colour.
+# If you use colour you must choose a palette other than the defaults.
+
+#first wrangle the data to identify medal vs non-medal events
+olympics <- olympics %>% mutate(
+  event_type = case_when(is_medal_event == TRUE ~ 'Medal Event',
+                         is_training == TRUE ~ 'Training Event',
+                         TRUE ~ 'Non Medal Event')
+  ) 
+
+# get data frame for the events by type for requirement 1: "Your chart must distinguish all event types (medal, non-medal, training) for each discipline." requirement 
+event_by_type <- olympics %>% 
+  select (discipline, event_type) %>%
+  group_by(discipline, event_type) %>%
+  summarise(Count = n(),
+            .groups = 'drop') %>%
+  mutate(measure_type = 'By event type')
+
+#get event totals
+event_totals <- olympics %>% 
+  select (discipline, event_type) %>%
+  group_by(discipline) %>%
+  summarise(
+    Count = n(),
+    .groups = 'drop') %>% 
+  mutate(measure_type = 'Total', event_type = 'All') %>%
+  select(discipline, event_type, Count, measure_type)
+
+E1_Q1_data <- bind_rows(event_by_type, event_totals)
+
+#Order count data to get the factor order for the plot
+discipline_order <- E1_Q1_data %>% 
+  filter(measure_type == 'Total') %>% 
+  arrange(desc(Count)) %>% 
+  pull(discipline)
+
+#create the plot data frame. Using the discipline order to arrange the discipline as a factor for plotting it most to least events
+E1_Q1_data <- E1_Q1_data %>% mutate(
+  measure_type = factor(measure_type, levels = c("Total", "By event type")),
+  discipline = factor(discipline, levels = rev(discipline_order))
+  )
+
+```
+
+```{r Olympic Q1, setup}
+#Colour palette for the "Your chart must incorporate at least one of facetting or the use of colour."
+# and the `If you use colour you must choose a palette other than the defaults.` requirement 2 and 3
+E1_Q1_colours = tribble(~name, ~colour,
+        'All',            '#f9d1bc',
+        'Medal Event',    '#510056',
+        'Non Medal Event','#a4d8ff',
+        'Training Event', '#ffbdd8') |>
+  deframe() 
+```
+
+
+```{r Olympics Q1, fig.width=10, fig.height=6}
+#My frist step is to make an event column. There is logic embedded in the two event type variables which prevents simple pivoting. So I will do a conditional mutate. Training is TRUE AND is_medal_event is TRUE are mutually exclusive events. So the only odd one is when both are false.  
+
+#I will use facet grid to configure each facet independently. Normally I'd make two graphs and use patchwork to put them together.
+
+#to be able to control the facet axis I will use facet_grid winstead of facet_wrap. 
+ggplot(E1_Q1_data, aes(x = Count, y = discipline, fill = event_type)) +
+  geom_col(position = position_dodge(0.9)) +
+  facet_grid(. ~ measure_type, scales = "free_y", space = "free_y") + #requirement 2
+  labs(
+    title = "Curling up to Watch the Winter Olympics", 
+    subtitle = "Most events at the Winter Olympics are non medal events \nand curling makes up most of these events",
+    x = "Count", 
+    y = "",
+    fill = "Event Type") +
+  theme_minimal() +
+  theme(
+    title = element_text(face = 'bold'),
+    axis.text.y.right = element_blank(),
+    axis.ticks.y.right = element_blank(),
+    axis.title.y.right = element_blank(),
+    axis.text.y.left = element_text(),
+    axis.ticks.y.left = element_blank(),
+    panel.spacing = unit(0.5, "lines"),
+    legend.position = 'top',
+    strip.text.x = element_text(size = 14) 
+  ) +
+  scale_fill_manual(
+    values = E1_Q1_colours, #requirement 2 and 3
+    breaks = c("Medal Event", "Training Event", "Non Medal Event")) +
+  scale_x_continuous(breaks = seq(0, max(E1_Q1_data$Count), by = 50))
+
+```
+
+### 1.2
+
+New Zealanders did pretty well in the snowboarding. If you were planning on going to the snowboarding for two days in a row and wanted to see as many snowboarding events as possible, which days should you choose?
+
+
+```{r Olympics Q2 wrangling}
+#Luckily the snowboarding events are all in Livigno Snow Park. No commuting necessary. The question then is to identify which pair of days have the most snow boarding events between them
+
+#wrangle the data for calculating the metric on seeing events two days in a row. Totals
+all_events_days <- olympics %>% 
+  filter(discipline == 'Snowboard') %>% 
+  select(date, start_time, end_time, event_type) %>%
+  group_by(date) %>%
+  summarise(event_count = n()) %>%
+  mutate(
+    yesterday_count = lag(event_count),
+    yesterday_count = coalesce(yesterday_count, 0), #replacing null with o so I can sum them up neatly. Assuming no events on the yesterday for first date 
+    two_day_total = event_count + yesterday_count,
+# Now I need to name the day pairings. all events take place in Feb, so I can drop the month. And call each day 'nth'
+    day = paste0(day(date), 'th'),
+    yesterday = lag(day),
+    yesterday = if_else(is.na(yesterday), '3rd', yesterday),
+    two_day_name = paste(yesterday, 'and', day),
+    event_type = 'All',
+    facet = 'Total'
+   ) %>%
+  select(two_day_name, day, yesterday, two_day_total, event_type, event_count, yesterday_count, facet )
+  
+#Same as above, but grouped by event_type. This satisfies the requirement 1: 'Your chart must incorprate all event types (medal, non-medal).'
+medal_events_days <- olympics %>% 
+  filter(discipline == 'Snowboard') %>% 
+  select(date, start_time, end_time, event_type) %>%
+  group_by(date, event_type) %>%
+  summarise(event_count = n(), .groups = 'drop') %>%
+  mutate(
+    yesterday_count = lag(event_count),
+    yesterday_count = coalesce(yesterday_count, 0), 
+    two_day_total = event_count + yesterday_count,
+    day = paste0(day(date), 'th'),
+    yesterday = lag(day),
+    yesterday = if_else(is.na(yesterday), '3rd', yesterday),
+    two_day_name = paste(yesterday, 'and', day),
+    facet = 'Event split'
+   ) %>%
+  select(two_day_name, day, yesterday, two_day_total, event_type, event_count, yesterday_count, facet )
+
+#create the plot dataframe
+E1_Q2_data <- bind_rows(medal_events_days, all_events_days) %>%
+  mutate(
+    facet = factor(facet, levels = c("Total", "Event split")),
+    day = factor(day, levels = c('4th', '5th', '6th', '7th', '8th', '9th', '10th', '11th', '12th', '13th', '14th', '15th', '16th', '17th', '18th', '19th' ))
+  )
+
+#To satisfy the question and requirement 2, annotate the plot, I will draw a box around the chosen days and annotate within the box. 
+#Data frames for the rectangle I will draw
+all_days <- unique(E1_Q2_data$day) 
+
+#The chosen days are the 12th and 13th. I viewed the graph first, then added this to it later. 
+rect_data <- data.frame(
+  facet = unique(E1_Q2_data$facet),
+  xmin = which(all_days == "12th") - 0.5, # Start before 12th for the first vertical line
+  xmax = which(all_days == "13th") + 0.5, # End after 13th for the second vertical
+  ymin = 0,
+  ymax = Inf
+)
+
+#Satisfy the annotation requirement "Your chart must include some annotation that clearly points to the two days you decide to choose.#
+#initially my code was really yuck, but thanks to the feedback on portfolio 1, I figured out how ot use glue(). Was easier in complex cases like this. 
+annotation_data <- data.frame(
+  facet = unique(E1_Q2_data$facet),
+  label = c(
+    glue(
+      "{sum(medal_events_days$event_count[medal_events_days$day %in% c('12th', '13th') & medal_events_days$event_type == 'Medal Event'])} Medal,\n",
+      "{sum(medal_events_days$event_count[medal_events_days$day %in% c('12th', '13th') & medal_events_days$event_type == 'Non Medal Event'])} Non Medal,"
+    ),
+    glue("{max(all_events_days$two_day_total)} total")
+  ),
+  day = c('12th', '12th'),
+  event_count = c(19, 22)
+)
+
+```
+
+```{r Olympics Q2 graph, fig.height= 6, fig.width=10} 
+#reqruiement 1 is in the r chunk settings
+
+#The idea is to show a timeline of each day with the total number of events, then draw a red box around the two days that are the most, then annotate with the number of events. As columns. I will draw a red box around the two highest consecutive days and annotate the total number of events. 
+#I will show a total on the top and a breakdown in a  facet below. 
+#Assuming that you were not interested in seeing all of each event, due to overlap that would be impossible
+
+ggplot(E1_Q2_data, aes(y = event_count, x = day, fill = event_type)) +
+  geom_col(position = position_dodge(0.9), width =0.9) +
+  geom_rect(
+    data = rect_data,
+    aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+    fill = NA,          
+    color = "#dd0000",      
+    size = 1.5,         
+    inherit.aes = FALSE 
+  ) +
+  geom_text(
+    data = annotation_data,
+    aes(label = label, y = event_count, x = day), 
+    vjust = -0.5,    
+    hjust = 0,
+    color = "black",
+    size = 3,
+    inherit.aes = FALSE                  
+  ) +
+  facet_wrap( ~ facet, nrow = 2 ) + #reqruiement 3: much simpler facetting this time. 
+  labs(
+    title = 'Snowboarding Events in 2026 Winter Olympics',
+    subtitle = 'The 12th and 13th provide the best opportunity to watch the most snowboarding',
+    x = 'Day in February',
+    y = '',
+    fill = 'Event type'
+  ) +
+  theme_minimal() + 
+  theme(
+    title = element_text(face = 'bold'),
+    legend.position = 'top', 
+    strip.text.x = element_text(size = 12) 
+        ) + 
+   scale_fill_manual(
+    values = E1_Q1_colours, #satisfy requirement 3 and 4
+    breaks = c("Medal Event", "Non Medal Event")) 
+    
+```
+
+
+## Exercise 2
+
+### 2.1
+
+```{r exercise 2 dont touch me please}
+likelihood <- likely |> 
+  filter(term %in% c("Likely", "Unlikely")) |>
+  pivot_wider(names_from=term, values_from=probability) |>
+  mutate(InvertedUnlikely = 100-Unlikely, .keep='unused') |>
+  pivot_longer(c(Likely, InvertedUnlikely), names_to='term', values_to='probability') |>
+  mutate(term = factor(term, levels=c("Likely", "InvertedUnlikely"))) |>
+  left_join(metadata, join_by(response_id))
+```
+
+This transformation keeps only wanted terms (`likely`, `unlikely`) and calculates the complement of `unlikely`, using pivot wider to make this calculation simpler.  
+The complement probability enables the two box plots to be compared side by side, while the return to long form is required to plot the terms as separate boxes.  
+Finally a data frame called `metadata`, which contains the `age_band` variable, is joined to provide the categories for the boxes. 
+
+### 2.2
+
+Reproduce the chart by altering the below code
+```{r import text and marquee set up}
+#requirement 2: The font is Source Sans 3
+# get Source Sans 3 
+font_add_google("Source Sans 3", family = "sourcesans3")
+# Enable font 
+showtext_auto()
+
+#Requirement 3: The colours are #D55E00 and #0072B2
+custom_styles <- classic_style() |>
+  modify_style(
+    tag = "lab_orange",   
+    color = "#D55E00",
+    weight = "bold"       
+  ) |>
+  modify_style(
+    tag = "lab_blue",   
+    color = "#0072B2",
+    weight = "bold"       
+  )
+
+```
+
+
+```{r E2 Q2, fig.width=10, fig.height = 5}
+#requirement 1: The size of your chart should be 10 by 5 inches (in R chunk settings)
+#| fig-width: 10
+#| fig-height: 5
+
+E2_Q2_plot <- likelihood |>
+  #Requirement 5: Get the right groups for x axis
+  # remove NA, group under 18 and 18-24 into under 24, group 65-74 and 75+ into 65+, make factors of the ages bands, maybe set a colour hex to the box plots outlines
+  select(response_id, term, probability, age_band) |>
+  filter(!is.na(age_band)) |>
+  mutate(
+    age_band = case_when(
+      age_band %in% c('65-74', '75+') ~ "65+",
+      age_band %in% c('Under 18', '18-24') ~ "Under 24",
+      TRUE ~ age_band,
+    ),
+    age_band = factor(age_band, levels = c('Under 24', '25-34', '35-44', '45-54', '55-64', '65+'))
+  ) |>
+  ggplot() +
+  aes(y=probability, x=age_band, col=term) +
+  geom_boxplot(outlier.alpha = 0.2) + #requirement 4: The outliers of the boxplot have alpha=0.2.
+  #labels 
+  labs(
+     title = "Unlikely is universally more likely than likely",
+     # Requirement 8: The subtitle utilises element_marquee() from the marquee package
+     subtitle = "All age groups rate {.lab_orange **unlikely**} closer to 0% than {.lab_blue **likely**} is to 100%",
+     x = 'Age of Respondent',
+     y = 'Probability assigned to likely') +
+  #second Y axis
+  scale_y_continuous(
+    sec.axis = sec_axis( #requirement 6: The axis on the right is done via the sec.axis parameter. 
+      ~ 100 - ., 
+      name = "Probability assigned to unlikely",
+      breaks = seq(0, 100, by = 25)
+    )
+  ) +
+  #manual color for box plots
+  scale_color_manual(values = c("#0072B2", "#D55E00")) +
+  #Theme settings. Requirement 7: The base theme is theme_minimal(), and all font sizes are standard relative to the base_size
+  theme_minimal(base_family = "sourcesans3", base_size = 30) + 
+  theme(
+    #turn off vertical lines in panel
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.minor.y = element_blank(),
+
+    # format title and subtitle
+    plot.title = element_text(face = 'bold', size = rel(1.2)),
+    plot.subtitle = element_marquee(style = custom_styles, size = rel(0.7)),
+    
+    #main y axis
+    axis.title.y = element_text(color = '#0072B2', size = rel(0.9)),
+    axis.text.y = element_text(color = '#0072B2', size = rel(0.9)),
+    
+    #second y axis - turns out they are relative to the first axis. 
+    axis.title.y.right = element_text(color = '#D55E00', size = rel(1)),
+    axis.text.y.right = element_text(color = '#D55E00', size = rel(1)),
+    
+    #x axis format
+    axis.title.x = element_text(size = rel(1)),
+    
+    #legend off
+    legend.position = ''
+  )
+
+#ensure output size is as required 10 by 5 inches
+ggsave("E2_Q2_plot.png", plot = E2_Q2_plot, width = 10, height = 5, units = "in", dpi = 300)
+
+E2_Q2_plot
+
+```
+
+## Exercise 3
+
+### Question
+
+How does river water clarity change with a river's environment in this region (between and around Palmerston North and Wellington, New Zealand)?
+
+### Introduction
+
+Water clarity is a proxy for water safety - clear water is safer to interact with while unclear water is not. People understand this because it is visual and many can relate to it from experience. The lawa dataset contains river water quality associated measurements for river measurement sites across NZ. My subset contains rivers around and between Wellington and Palmerston North. Two measures from the data relate to water clarity; `turbidity`, a measure of how light scatters off suspended particles in the water (Lawa, 2024), and `Clarity (BDISC)`, meters of depth before a black measurement disc becomes unseen (Lawa, 2024). Only one of these measurements is required to answer the posed question. Because BDISC refers to meters, a well known concept for a reader to grasp, only BDISC clarity will be used. A river's environment is defined, within this dataset, by its `altitude` (upland, lowland) and its `landcover` (native forest, exotic forest, pasture and urban). Together these make a proxy for environment that can categorise rivers with enough granularity that readers can visualise rivers within the region and relate the chart to their own world. 
+
+
+### Approach
+
+To answer the question I will use the pooled mean compared to grouped mean for each location type. This will express the impact of land use of river clarity. In order to give context to the aggregation I will show the sample size and number of sites sampled, as well as the shape/density of the data. I do this because I do not like it when aggregates are not shown without reference to the data's shape and volume. Particularly when the groups do not have an even number of samples. Like this data. For this I like the `stat_halfeye` and `stat_interval` geoms. To create this chart I will combine altitude and land cover because they have too few individual category labels to show enough variety in the river's environment. This combined category is a proxy for land use. Exotic forest is removed as its extremely peaked distribution caused by a small sample, hides the others. The story I want to tell is a tongue in cheek jab at the conversation around river water quality. The rivers that are the most spoken of are the most sampled, and in the data the lowland pasture rivers are about 6 times more sampled than the second most sampled category. Does this impact the reported statistic or not? That is the angle I want to tell story on. Are over sampled rivers less clear? A play on causation vs. correlation to catch reader interest. 
+
+### Analysis/code
+```{r custom theme & wrangling}
+# a minimalist theme, more minimal than theme_minimal. Reusing the framework from my portfolio 3
+# meeting the requirement for theme customisation
+theme_lawa <- function(base_size = 10, base_family = "mono") { 
+    theme(
+      # Font root for base values
+      text = element_text(family = base_family, size = base_size, colour = 'black'),
+      #labels - I will left align the title and sub - title
+      plot.title = element_text(face = "bold", size = rel(2), hjust = 0, margin = margin(l=20)),
+      plot.subtitle = element_text(face = "italic", size = rel(1.5), hjust = 0, margin = margin(b = 15, t = 10, l = 20)),
+      plot.title.position = "plot",
+      #Axis
+      axis.text = element_text(colour = '#2f3136'),
+      axis.title.x = element_text(face = "bold", size = rel(1.5), margin = margin(t = 10)),
+      axis.ticks.y = element_blank(),
+      axis.ticks.x = element_blank(),
+      axis.text.y = element_text(hjust = 1),
+      #Gridlines
+      panel.grid.minor.y = element_blank(), 
+      panel.grid.minor.x = element_blank(), 
+      panel.grid.major.x = element_line(color = "#dadad1", linewidth = 0.1),
+      panel.grid.major.y = element_blank(), #element_line(color = "#dadada", linewidth = 0.25),
+      #Background and panel
+      plot.background = element_rect(fill = 'white'),
+      panel.background = element_rect(fill = 'white', colour = NA),
+      #Legend
+      legend.position = 'top',
+      legend.justification = 'left',
+      legend.title = element_text(face = 'italic', size = rel(1.1)),
+      # legend.title = element_blank(),
+      legend.text = element_text(size = rel(0.9)),
+      # legend.box.background = element_rect(fill = "#2f3136", colour = "#C7A04A", linewidth = 1),
+
+      #complete it
+      complete = TRUE
+    )
+}
+
+#==========data wrangling =========================
+#3 dplyr verbs used. 2 verb requirement satisifed. 
+plot_data <- lawa %>% 
+  filter(!is.na(`Clarity (BDISC)`), !is.na(LandCover), !is.na(Altitude)) %>% 
+  select(SiteID, LandCover, Altitude, `Clarity (BDISC)`) %>%
+  mutate(Category = paste(Altitude, LandCover)) %>%
+  select(-LandCover, -Altitude) %>%
+  filter(Category != "Lowland Exotic forest") #remove the group with one site cateogry, it's density hides the others
+
+#=====Wrangling for plot layout and features======
+#create specific labels with count of sites
+sample_counts <- plot_data %>%
+  group_by(Category) %>%
+  summarise(count  = n()) 
+
+site_counts <- plot_data %>%
+  select(SiteID, Category) %>%
+  unique() %>%
+  group_by(Category) %>%
+  summarise(count  = n())
+
+# because I want my y axis labels to include values for sites and samples, I have this somewhat complex code. 
+labels <- site_counts %>% 
+  left_join(sample_counts, by = "Category") %>% 
+  mutate(
+    max_width = max(nchar(Category)),
+    label = glue("{str_pad(Category, width = max_width, side = 'left')} ({count.x}, {count.y})")
+    )
+
+# Create lookup vector for the custom label discrete scale
+label_lookup <- setNames(labels$label, labels$Category)
+
+#mean value for vline
+mean_value <- mean(plot_data$`Clarity (BDISC)`)
+
+# this I need to make the pooled mean annotation sit at top of the discrete scale. 
+y_levels <- levels(factor(plot_data$Category))
+
+#geom stat half eye and interval widths - standard ones ended up the best
+widths = c(0.5, 0.8, 0.95)
+```
+
+```{r chart, fig.width = 10, fig.height= 6}
+plot_data %>%
+  ggplot(aes(y = Category, x = `Clarity (BDISC)`)) +
+  stat_halfeye(
+    mapping = aes(fill_ramp = after_stat(level)), 
+    fill_type = "segments", 
+    .width = widths, 
+    alpha = 0.5, 
+    show.legend = FALSE
+  ) +
+  stat_interval(.width = widths) +
+  stat_summary(geom = "point", fun = mean) +
+  scale_fill_ramp_discrete(na.translate = FALSE) +
+  geom_vline(xintercept = mean_value, col = 'black', lty = 'dashed') +
+  #add an annotation over hte y axis ot indicate the number of sites
+  annotate("text", 
+           x = 0, # Position x near the counts (right side)
+           y = y_levels[5], # Position y at the top-most category level
+           label = "(Sites, Samples)", 
+           size = 3, 
+           hjust = 1.2, # Left align the header with the counts
+           vjust = -3, # Push it up above the label
+           family = "mono") +
+  #group mean annotation
+  annotate("text", 
+           x = 2, # Position x near the counts (right side)
+           y = y_levels[5], # Position y at the top-most category level
+           label = paste0('pooled mean = ', round(mean_value, 2)), 
+           size = 3, 
+           hjust = -0.1, # keep it to the right of the mean line
+           vjust = -7, # Push it up over the geom
+           family = "mono") +
+  scale_y_discrete(labels = label_lookup) + #applying the custom labels 
+  #colors go outside in
+  scale_color_manual(values = c("#f9e4c4","#79b9e7", "#4277af")) + 
+  scale_x_continuous(breaks= seq(0, max(plot_data$`Clarity (BDISC)`), by = 1)) +
+  coord_cartesian(xlim = c(0, 12), clip = "off") +
+  labs(
+    title = 'Is oversampling bias making rivers less clear?',
+    subtitle = 'No, but increased activity around rivers does',
+    caption = "Pasture land and urban areas have mean water clarity below the pooled mean, despite high or low sample sites \n while native forests are above it. There appears to be no trend in altitude. \n Sampled sites are all between Wellington and Palmerston in NZ",
+    x = 'Water clarity (Meters of depth visibility)', 
+    y = '') +
+  theme_lawa() 
+
+```
+
+
+
+### Discussion
+
+It would appear that a river's environment impacts its clarity around the sampled collection site. Rivers have an average visible clarity depth of 2 meters. Only native vegetation has a deeper visibility; Lowland at 3.4m and upland at 4.2m, roughly. Native forest are not areas of high activity. I.e. people, animals, etc. Pasture and urban land cover are, and these are below the mean. Lowland pasture with the lowest at about 1.5m. There is another angle to consider, and this is presented as the eye catcher in the plot's title. Some areas are of more interest and are thus sampled more. An argument one can raise to the initial question is that places where water samples are taken more often will have increased variability and therefore naturally we will see more extremes which will impact the statistics. Therefore, knowing about the distribution is useful. From the chart it appears that sampling doesn't impact the measure. One must ignore lowland pasture and look at the other categories which are closer in sample counts. In the shapes of their distributions we see that sample numbers are not impacting measurement. It simply seems to be a characteristic that native forests have wide, flat distributions while pasture and urban areas have narrower, skewed ones. Therefore, we can exclude the possibility that what we are seeing is the result of sampling bias.
+
+
+ * * *
+ 
+# Reflection
+
+
+## Reflection (6 marks)
+
+**What is something you have found difficult in the course to date?**
+
+I have not really found anything that hard so far. At least not technically so. Perhaps the most challenging aspect has been to find a story I find interesting in the data. A story I want to tell which can also be informative to the reader. For example, in exercise 3 I have heard the argument being made that sampling bias is an impact to the reported values (you know what they say, in river water as in crime statistics...). In some cases it may be true. In this river water data not so, I think. Given I have used this data set before to make a model to predict water quality and produce a swim score for a given input date, I am very familiar with it and confident in its veracity. Another example is the NZ birth data. It was a pretty boring dataset on its own. What sort of story is there to tell looking at the ridge line plot? So I had to do some research which led me to find that it appeared mother birth age decreased as sexual education become more public. A satisfying story because whoever reads it can get offended in their own way. And that, to me, is a good outcome.
+
+
+**What is something you have gained an understanding of while doing this assessment?**
+
+From this assignment and portfolio 3 I have gained an understanding about the plot themes by using a custom theme. Which is useful. And the glue() library. I hadn't had occasion to consider that before. I've also learned more about the grammar of plots, and in my own time gone into the concept of a 'grob' a bit more. Which is useful and I am still playing with and so did not try out here. Finally, perhaps the most useful insight so far has been that each chart can be treated like a story with a three part act. I liked that and it has made me think more about how to direct readers when showing plots. Given my personality and warped sense of humour (I have been told), I am having fun with this concept. 
+
+
+**What is something you feel you would like to understand more?**
+
+I'd like to understand more complex graphical displays. Such as the 'Grob' using functions like ggplotGrob() and grid_panel(). I would also really like to do map based graphics (thanks for week 4) and graphics like chord diagrams, arc diagram, hierarchical edge bundling, networks, Sankey diagrams... things that map flows. I was really pleased to learn about ggdist with the half eye chart and the other charts in that library. Personally, I really like graphics that show the shape of the data as opposed to things like bar graphs, simpler graphics or aggregates apropos of nothing. 
+
+
+* * *
+
+
+# Bibliography
+
+LAWA. (2024). Factsheet: Water clarity. https://www.lawa.org.nz/learn/factsheets/water-clarity

@@ -1,0 +1,409 @@
+---
+title: "Week 5 Tutorials: Visualising Random Processes - SOLUTIONS"
+subtitle: "161.307 Reproducible Visualisation for Statistics"
+author: "School of Mathematical and Computational Sciences, Massey University"
+date: "12 August 2026"
+date-format: "D MMM YYYY"
+lang: en-GB
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    toc-float: true
+    number-sections: false
+    number-offset: -1
+    theme: cosmo
+    highlight-style: github
+    code-fold: false
+    self-contained: true
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+## Overview
+
+Three sessions this week:
+
+1. **Tutorial 1** - Generating and plotting single realisations
+2. **Tutorial 2** - Many realisations: spaghetti and small multiples
+3. **Tutorial 3** - Summarising ensembles with ribbons, and a short written comparison exercise
+
+This document gives one worked solution for each exercise. Answers to
+open-ended questions are one reasonable response, not the only correct
+one — the R/ggplot2 code and the reasoning behind it are the important
+part.
+
+```{r}
+#| label: setup
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+```
+
+---
+
+## Tutorial 1: Generating and plotting single realisations
+
+### 1.1 A random walk
+
+```{r}
+set.seed(2026)
+n <- 100
+
+walk_df <- data.frame(
+  time = 1:n,
+  position = cumsum(rnorm(n, mean = 0, sd = 1))
+)
+
+head(walk_df)
+set.seed(2026)
+head(rnorm(n, mean = 0, sd = 1))
+
+ggplot(walk_df, aes(time, position)) +
+  geom_line(colour = "steelblue") +
+  labs(title = "Random walk, sd = 1",
+       x = "Step", y = "Position") +
+  theme_minimal()
+```
+
+**Exercise 1.1 - Solution**
+
+Seeds used: `sd = 0.5` -> seed `2027`; `sd = 1` -> seed `2026`
+(as above); `sd = 2` -> seed `2028`. Recording the seed for each
+series is what makes the figure reproducible even though three
+different random draws went into it.
+
+```{r}
+set.seed(2027)
+walk_05 <- data.frame(time = 1:n,
+                       position = cumsum(rnorm(n, mean = 0, sd = 0.5)),
+                       sd = "0.5")
+
+set.seed(2026)
+walk_1 <- data.frame(time = 1:n,
+                      position = cumsum(rnorm(n, mean = 0, sd = 1)),
+                      sd = "1")
+
+set.seed(2028)
+walk_2 <- data.frame(time = 1:n,
+                      position = cumsum(rnorm(n, mean = 0, sd = 2)),
+                      sd = "2")
+
+walks_all <- bind_rows(walk_05, walk_1, walk_2)
+
+ggplot(walks_all, aes(time, position, colour = sd)) +
+  geom_line() +
+  labs(title = "Random walks for sd = 0.5, 1, 2",
+       x = "Step", y = "Position", colour = "sd") +
+  theme_minimal()
+```
+
+*What happens to the y-axis range?* The spread of the walk grows with
+`sd`, and it grows faster than linearly with the number of steps: for
+a simple random walk the standard deviation of the position at step
+`t` is `sd * sqrt(t)`. Doubling `sd` roughly doubles the y-axis range
+needed, and the `sd = 2` series visually dwarfs the `sd = 0.5` series
+even though both start at the same point.
+
+### 1.2 Faceting by parameter
+
+**Exercise 1.2 - Solution**
+
+The seed is set once, before generating all six series, so the six
+draws are six genuinely different segments of the same random stream
+rather than six copies of the same numbers (which is what would happen
+if the seed were reset inside the loop). That keeps the panels
+independent and comparable, and keeps the whole figure reproducible
+from a single seed.
+
+```{r}
+set.seed(2026)
+
+params <- expand.grid(sd = c(0.5, 1, 2), drift = c(0, 0.1))
+
+facet_df <- lapply(seq_len(nrow(params)), function(i) {
+  sd_i    <- params$sd[i]
+  drift_i <- params$drift[i]
+  data.frame(
+    time = 1:n,
+    position = cumsum(rnorm(n, mean = drift_i, sd = sd_i)),
+    sd = sd_i,
+    drift = drift_i
+  )
+})
+facet_df <- bind_rows(facet_df)
+
+ggplot(facet_df, aes(time, position)) +
+  geom_line(colour = "steelblue") +
+  facet_grid(sd ~ drift,
+             labeller = label_bquote(rows = sd == .(sd),
+                                      cols = drift == .(drift))) +
+  labs(title = "Random walks across sd (rows) and drift (columns)",
+       x = "Step", y = "Position") +
+  theme_minimal()
+```
+
+---
+
+## Tutorial 2: Many realisations - spaghetti and small multiples
+
+### 2.1 Generating an ensemble
+
+```{r}
+set.seed(2026)
+n_steps <- 100
+n_sims  <- 50
+
+sims <- lapply(1:n_sims, function(i) {
+  data.frame(sim = i, time = 1:n_steps,
+             position = cumsum(rnorm(n_steps)))
+})
+sims <- bind_rows(sims)
+```
+
+### 2.2 Spaghetti plot
+
+Trying different alphas: (to anticipate the next question)
+
+```{r}
+ggplot(sims, aes(time, position, group = sim)) +
+  geom_line(alpha = 1, colour = "steelblue") +
+  labs(title = "50 random walk realisations - alpha = 1") +
+  theme_minimal()
+```
+
+```{r}
+ggplot(sims, aes(time, position, group = sim)) +
+  geom_line(alpha = 0.3, colour = "steelblue") +
+  labs(title = "50 random walk realisations - alpha = 0.3") +
+  theme_minimal()
+```
+
+```{r}
+ggplot(sims, aes(time, position, group = sim)) +
+  geom_line(alpha = 0.15, colour = "steelblue") +
+  labs(title = "50 random walk realisations - alpha = 0.15") +
+  theme_minimal()
+```
+
+```{r}
+ggplot(sims, aes(time, position, group = sim)) +
+  geom_line(alpha = 0.05, colour = "steelblue") +
+  labs(title = "50 random walk realisations - alpha = 0.05") +
+  theme_minimal()
+```
+
+**Exercise 2.1 - Solution**
+
+```{r}
+#| fig-width: 9
+#| fig-height: 7
+make_spaghetti <- function(n_sims, alpha_val, seed = 2026) {
+  set.seed(seed)
+  df <- lapply(1:n_sims, function(i) {
+    data.frame(sim = i, time = 1:n_steps,
+               position = cumsum(rnorm(n_steps)))
+  })
+  df <- bind_rows(df)
+
+  ggplot(df, aes(time, position, group = sim)) +
+    geom_line(alpha = alpha_val, colour = "steelblue") +
+    labs(title = paste0("n = ", n_sims, ", alpha = ", alpha_val)) +
+    theme_minimal(base_size = 9)
+}
+
+grid_params <- expand.grid(n_sims = c(50, 500), alpha_val = c(1, 0.3, 0.05))
+
+plots <- Map(make_spaghetti, grid_params$n_sims, grid_params$alpha_val)
+
+wrap_plots(plots, ncol = 3)
+```
+
+At `n = 50`, `alpha = 1` is already messy but individual paths are
+still traceable; `alpha = 0.3` starts to reveal the density of the
+bundle; `alpha = 0.05` is too faint and the ensemble almost
+disappears because 50 lines don't build up enough overlap. At
+`n = 500`, `alpha = 1` becomes a solid unreadable block, `alpha = 0.3`
+is still too dense to separate paths, and `alpha = 0.05` is the first
+setting where individual overplotting resolves into a readable density
+gradient. In short: the useful alpha scales roughly like `1/n_sims`,
+and a fixed alpha that works well for one `n` will usually fail badly
+at another.
+
+### 2.3 Small multiples
+
+```{r}
+sims |>
+  filter(sim <= 9) |>
+  ggplot(aes(time, position)) +
+  geom_line(colour = "steelblue") +
+  facet_wrap(~ sim, nrow = 3) +
+  labs(title = "9 of 50 realisations") +
+  theme_minimal()
+```
+
+**Exercise 2.2 - Solution**
+
+```{r}
+#| fig-width: 10
+#| fig-height: 8
+sims |>
+  filter(sim <= 25) |>
+  ggplot(aes(time, position)) +
+  geom_line(colour = "steelblue") +
+  facet_wrap(~ sim, nrow = 5) +
+  labs(title = "25 of 50 realisations") +
+  theme_minimal(base_size = 8)
+```
+
+Empirically, around 20-25 panels (a 5x5 grid) is about the practical
+ceiling at a typical screen/slide size using `fig-width = 10`,
+`fig-height = 8`: individual panel axes are still legible and shapes
+are distinguishable. Beyond about 30 panels the per-panel plotting
+area becomes too small to read axis labels, and by 50 panels the grid
+is only useful for a very coarse "are these all roughly similar"
+impression rather than for judging any individual trajectory.
+
+### 2.4 Discussion (bring to class)
+
+**Which representation better conveys...**
+
+- **(a) the typical trajectory shape** - Small multiples, since each
+  panel shows one full, uncluttered trajectory and the eye can trace
+  its shape without interference from other lines.
+- **(b) the spread of outcomes at the final time point** - The
+  spaghetti plot, because overlapping semi-transparent lines let the
+  eye read off density directly, and the vertical band of ink at the
+  right-hand edge visually encodes the spread; a set of 9-25 small
+  panels only samples a few final values and doesn't build up that
+  density impression. (Tutorial 3's ribbon plot is a more precise way
+  to answer this same question.)
+- **(c) whether any individual trajectory is unusual** - Small
+  multiples again: an unusual path is easy to spot in its own panel,
+  but in a spaghetti plot with many overlapping lines a single unusual
+  trajectory is often visually swamped by the rest of the bundle
+  unless it is extreme.
+
+**A process where small multiples would be preferable regardless of
+`n`** - Any setting where the *shape over time* of an individual
+series matters more than the ensemble's aggregate spread, and where
+series are qualitatively different from one another rather than
+exchangeable draws from the same process - for example, daily case
+counts for different countries during an epidemic, or sensor traces
+from different patients in an ICU. There, overlaying the series as
+spaghetti would blur exactly the between-series shape differences that
+are the point of the plot, no matter how few or many series there are.
+
+---
+
+## Tutorial 3: Summarising ensembles
+
+### 3.1 From realisations to summaries
+
+```{r}
+set.seed(2026)
+n_steps <- 100
+n_sims  <- 500
+
+sims_big <- lapply(1:n_sims, function(i) {
+  data.frame(sim = i, time = 1:n_steps,
+             position = cumsum(rnorm(n_steps)))
+})
+sims_big <- bind_rows(sims_big)
+
+summary_df <- sims_big |>
+  group_by(time) |>
+  summarise(
+    median  = median(position),
+    lower50 = quantile(position, 0.25),
+    upper50 = quantile(position, 0.75),
+    lower90 = quantile(position, 0.05),
+    upper90 = quantile(position, 0.95),
+    .groups = "drop"
+  )
+```
+
+**Exercise 3.1 - Solution**
+
+*Prediction*: the 90% band should get **wider** over time. Each step
+adds an independent `rnorm()` increment, so the variance of the
+position at time `t` is the sum of `t` independent variances and grows
+linearly in `t` (variance = `t * sd^2`); the standard deviation, and
+hence the width of any fixed-probability interval, grows like
+`sqrt(t)`. There's no drift to shift the band, only noise that
+accumulates, so uncertainty about "where am I now" necessarily
+increases the longer the walk has been running.
+
+### 3.2 Ribbon plots and comparison
+
+```{r}
+ggplot(summary_df, aes(time)) +
+  geom_ribbon(aes(ymin = lower90, ymax = upper90),
+              alpha = 0.2, fill = "steelblue") +
+  geom_ribbon(aes(ymin = lower50, ymax = upper50),
+              alpha = 0.4, fill = "steelblue") +
+  geom_line(aes(y = median), colour = "steelblue", linewidth = 1) +
+  labs(title = "Random walk: median, 50% and 90% intervals (500 sims)",
+       x = "Time", y = "Position") +
+  theme_minimal()
+```
+
+This confirms the prediction from Exercise 3.1: both the 50% and 90%
+bands visibly widen as `time` increases, consistent with variance
+growing linearly in the number of steps.
+
+**Exercise 3.2 - Solution**
+
+```{r}
+set.seed(1)
+sample_sims <- sample(unique(sims_big$sim), 10)
+
+sample_df <- sims_big |> filter(sim %in% sample_sims)
+
+# Version A: ribbon only
+p_ribbon_only <- ggplot(summary_df, aes(time)) +
+  geom_ribbon(aes(ymin = lower90, ymax = upper90),
+              alpha = 0.2, fill = "steelblue") +
+  geom_ribbon(aes(ymin = lower50, ymax = upper50),
+              alpha = 0.4, fill = "steelblue") +
+  geom_line(aes(y = median), colour = "steelblue", linewidth = 1) +
+  labs(title = "Ribbon only") +
+  theme_minimal(base_size = 9)
+
+# Version B: ribbon + 10 sampled trajectories
+p_ribbon_lines <- ggplot(summary_df, aes(time)) +
+  geom_ribbon(aes(ymin = lower90, ymax = upper90),
+              alpha = 0.2, fill = "steelblue") +
+  geom_ribbon(aes(ymin = lower50, ymax = upper50),
+              alpha = 0.4, fill = "steelblue") +
+  geom_line(data = sample_df, aes(y = position, group = sim),
+            colour = "grey30", alpha = 0.4, linewidth = 0.3) +
+  geom_line(aes(y = median), colour = "steelblue", linewidth = 1) +
+  labs(title = "Ribbon + 10 sampled trajectories") +
+  theme_minimal(base_size = 9)
+
+# notice that adding `colour = as.factor(sim)` in the `geom_line(data = sample_df...`
+# aes() gets different colours for the individual trajectories. Maybe better to 
+# get fewer than 10 then. 5 is good and makes them clearly identifiable.
+
+p_ribbon_only + p_ribbon_lines
+```
+
+*Chosen version and justification*: Version B (ribbon plus a handful
+of individual trajectories) communicates better here. The ribbon alone
+answers "how much spread is there" but hides that individual paths are
+often much rougher than the smooth median line suggests; adding just
+10 thin, low-alpha trajectories grounds the abstract interval in
+concrete example paths without seriously cluttering the plot, since 10
+lines at low alpha stay visually subordinate to the ribbon. Adding all
+500 trajectories, by contrast, would clutter the plot and defeat the
+purpose of summarising in the first place - the value of the small
+sample is that it illustrates without overwhelming.
+
+> **Looking ahead**: keep your ensemble data frame (or the code that
+> generates it). Week 6's tutorials will revisit the ribbon idea, but
+> applied to *model-based* intervals (confidence/prediction intervals,
+> bootstrap distributions) rather than simulation ensembles. The visual
+> grammar is the same; the source of the uncertainty differs.

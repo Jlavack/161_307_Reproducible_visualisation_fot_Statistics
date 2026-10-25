@@ -1,0 +1,186 @@
+---
+title: "Portfolio 3: Joyous births"
+author: "John Lavack, 20001249"
+format:
+  html:
+    embed-resources: true
+knitr:
+  opts_chunk:
+    #aspect ratio requirement met here
+    fig.width: 10
+    fig.asp: 0.5
+    out.width: "100%"
+    dev: "ragg_png"
+---
+
+```{r dont touch this code chunk}
+#| echo: false
+#| message: false
+#| warning: false
+library(tidyverse)
+library(ggdist)
+library(systemfonts)
+
+nz_births <- read_csv("https://www.massey.ac.nz/~jcmarsha/data/nz/births_tidy.csv") |>
+  mutate(cohort = year - age) |> # mothers year of birth
+  filter(cohort >= 1948, cohort <= 1980, age < 46)
+```
+
+## Your Figure
+
+```{r font set up, warning= FALSE, message=FALSE, echo = FALSE}
+#because I have a windows device, I get this bug with systemfonts. It doesn't access the font files consistently. Therefore I use the below approach with the extrafont library. 
+library(showtext)
+library(extrafont)
+
+#getting a font from an online source
+font_add_google(name = "Open Sans", family = "opensans") #online source for reproducibility requirement met
+font_import(pattern = "times.ttf", prompt = FALSE)
+
+#Get the times new roman font for my theme as a base font. 
+font_add(family = "times",
+         regular = "C:/Windows/Fonts/times.ttf",
+         bold = "C:/Windows/Fonts/timesbd.ttf",
+         italic = "C:/Windows/Fonts/timesi.ttf")
+
+showtext_auto() #so plots can use the font
+
+loadfonts(device = "win")
+#because I have used a different approach, these lines are not strictly required for my code to work, but the requirements said to use them. So here they are. This is an issue I have had many times on window PCs and I think it is caused by not having access to the admin user profile. It seems to be a common issue: https://stackoverflow.com/questions/71573377/cannot-import-fonts-into-r
+require_font("Times New Roman")
+require_font("Open Sans")
+
+```
+
+
+```{r custom theme}
+#This satisfies the custom theme requirement
+#a dark colour theme to have a 'pop' with warm colors like yelow and orange.
+theme_portfolio3_dark <- function(base_size = 10, base_family = "times") {
+    theme(
+      # Font root for base values
+      text = element_text(family = base_family, size = base_size, colour = 'white'),
+      #labels - I will centre the title and sub - title
+      plot.title = element_text(face = "bold", size = rel(1.6), hjust = 0.5),
+      plot.subtitle = element_text(size = rel(1.2), hjust = 0.5, margin = margin(b = 15)),
+      #Axis
+      axis.text = element_text(), #Not used here, but kept in so I can change if I want to.
+      axis.title = element_text(face = "bold", size = rel(1.1)),
+      #Gridlines
+      panel.grid.major = element_line(color = "#2f3136"), #this makes it look like the backgroind flows through the panel, which I like
+      panel.grid.minor = element_line(color = "#2f3136"),
+      #Background and panel
+      plot.background = element_rect(fill = '#2f3136', colour='#C7A04A', linewidth=2),
+      panel.background = element_rect(fill = '#585B61', colour = NA),
+      #Legend
+      legend.position = 'top',
+      legend.background = element_rect(fill = '#2f3136', colour = NA),
+      legend.key = element_rect(fill = '#2f3136', colour = NA),
+      legend.title = element_text(face = 'italic', size = rel(1.1)),
+      legend.text = element_text(size = rel(0.9)),
+      legend.box.background = element_rect(fill = "#2f3136", colour = "#C7A04A", linewidth = 1),
+
+      #complete it
+      complete = TRUE
+    )
+}
+```
+
+```{r dataframes for extra geoms}
+#for dot ridge line in grpah
+mean_data <- nz_births %>%
+  group_by(cohort) %>%
+  summarise(
+    mean_age = weighted.mean(age, w = births), 
+    # mean_births = mean(births), #was for playing around with geom_text_repl
+    .groups = 'drop') 
+
+# for vlines in graph
+vline_data <- mean_data %>%
+  arrange(cohort) %>%       # Sort by cohort to ensure correct first/last
+  slice(c(1, n())) %>%      # Keep only the first and last rows
+  select(mean_age)
+
+#to highlight differeing intensities of sex ed
+nz_births <- nz_births %>%
+  mutate(
+    cohort_group = case_when(
+      cohort >= 1956 & cohort <= 1972 ~ "Cohort B", #mptjhers born now would be hitting puberty around the time the department of health Sex ed pamplets were being aimed at youths. https://teara.govt.nz/en/ephemera/30866/sex-education-pamphlet-1970s
+      cohort >= 1973 ~ "Cohort C", # these kids were the cohorts who had the legal restrictions on advining under 16 years old on the use of contracpetives remvoed. http://teara.govt.nz/en/sexualities/page-3
+      TRUE ~ "Cohort A" 
+    ),
+    cohort_group = factor(cohort_group, levels = c("Cohort C", "Cohort B", "Cohort A")) #reverse for drawing order due to rec(ohoror) in the plot
+  )
+```
+
+
+```{r your figure here, fig.height=8, fig.width=10, warning=FALSE}
+#aspect ratio changed in chunk setup - 2:1 aspect ratio. Also defined in chunk set up. Here I changed it again so I can see the output when I run the code nicely
+#I will tell a story about the increasing push of sexual education and decreasing mother age at birth. A contentious story, but one all readers can become enflamed by...
+
+ggplot(nz_births) +
+  aes(x=age, y=rev(cohort), group=cohort) +
+  #moving thickness aes into the geom, to avoid having to NULL it at each layer
+  geom_slab(aes(thickness = births, fill= cohort_group), height=2, col = 'black', alpha= 0.6) + 
+  labs(title = 'Mothers are Becoming Younger',
+       subtitle = 'Increasing sexual education coincides with decreasing mother age at birth.',
+       x = "Mother's age at child birth",
+       y = "Mother's year of birth",
+       caption = 'Weighted Average Age of Mothers at Birth has Decreased Since between 1948 to 1980 cohort by 4 Years\n These are mothers giving birth in 1962 and 2015 respectively') +
+  #Story time. THe next geom layers are for the sotry of the data I want to tell
+  #add vertical lines at mean age at the max and min of the cohorts to show change in mean over time. 
+  geom_vline(
+    data = vline_data,
+    aes(xintercept = mean_age, color = "Cohort Mean Edges", shape = "Cohort Mean Edges"), #including shape is required for the legend, but it will throw a wanring, so I have made warnings false for this chunk
+    linetype = "solid",
+    linewidth = 0.8,
+    alpha = 0.7,
+    show.legend = TRUE #default is false. Go figure. It was confusing
+  ) +
+  #add the mean age for each density to show a nice trend running down the ridges
+  geom_point(
+    data = mean_data,
+    aes(x = mean_age, y = rev(cohort), color = "Cohort Mean Ages", shape = "Cohort Mean Ages"), 
+    size = 1,                           
+    show.legend = TRUE
+  ) +
+  #custom legend... need to manually define shape and color for each to avoid messy legend
+  scale_fill_manual(
+    name = "Cohorts\nSex Ed",
+    values = c("Cohort A" = '#FFFF00', "Cohort B" = '#FFD700', "Cohort C" = '#C7A04A'),
+    breaks = c("Cohort A", "Cohort B", "Cohort C"), 
+    labels= c("Sex ed in \ncurriculum", "Sex ed aimed \nat youths", "No Sex ed"), #had to manually flip things due to the rev(cohort) argument... unfortunate.  
+    guide = guide_legend(reverse = TRUE) #Get the legend showing it hteright order. Took a while to gfigure this out...
+  ) +
+  scale_color_manual(
+    name = 'Cohort\nMeans', # Must match across all scales
+    values = c("Cohort Mean Edges" = "coral", "Cohort Mean Ages" = "white"),
+    breaks = c("Cohort Mean Edges", "Cohort Mean Ages"),
+    labels = c("First and Last \nCohort Mean Ages", "Cohort \nMean Ages"),
+  ) +
+  scale_shape_manual(
+    name = 'Cohort\nMeans', # Must match color scale name
+    values = c("Cohort Mean Edges" = NA, "Cohort Mean Ages" = 19),
+    breaks = c("Cohort Mean Edges", "Cohort Mean Ages"),
+    labels = c("First and Last \nCohort Mean Ages", "Cohort \nMean Ages")
+  ) +
+  guides(
+    color = guide_legend(
+      override.aes = list(
+        shape = c(NA, 19),             # show dot only for the second entry which is Cohort Mean Ages
+        linetype = c("solid", "blank") # Show line for first entry, Cohort Mean Edges, only
+      )
+    )
+  ) +
+  #story time over
+  #non-standard font requirement met by using Open Sans in place of the stadnard Times SNew Roman. 
+  theme_portfolio3_dark(base_family = "opensans") +
+
+  scale_y_continuous(breaks= seq(min(nz_births$cohort), 1980, by = 2)) +
+  scale_x_continuous(breaks= seq(min(nz_births$age), max(nz_births$age), by = 1)) 
+
+```
+
+ 
+
+

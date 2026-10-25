@@ -1,0 +1,339 @@
+---
+title: "Spreading the Love..."
+subtitle: "Portfolio 7 - 161.307 Reproducible Visualisation for Statistics (submitted in Week 8)"
+author: "John Lavack 20001249"
+date: "28 September 2026"
+date-format: "D MMM YYYY"
+lang: en-GB
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    toc-float: true
+    number-sections: false
+    number-offset: -1
+    theme: cosmo
+    highlight-style: github
+    code-fold: false
+    self-contained: true
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+## A real epidemic to anchor the simulation
+
+The data below are the classic English boarding-school influenza outbreak (1978), a population of `n = 763` boys, widely used to teach epidemic modelling (e.g. Bjørnstad, *Epidemics: Models and Data using R*). It is hardcoded here (no extra package needed) purely for reproducibility.
+
+```{r boarding school, warning = FALSE}
+#| fig-align: center
+library(ggplot2)
+
+boarding_school_flu <- data.frame(
+  day = 1:14,
+  in_bed = c(3, 8, 28, 76, 222, 293, 257, 237, 192, 126, 70, 28, 12, 5)
+)
+
+#saving this for later...
+Plot_school <- ggplot(boarding_school_flu, aes(x = day, y = in_bed)) +
+  geom_line(colour = "firebrick") +
+  geom_point(colour = "firebrick") +
+  labs(title = "English boarding-school influenza outbreak (1978)",
+       subtitle = "n = 763 boys",
+       x = "Day", y = "Number in bed (proxy for infectious)") +
+  theme_minimal()
+
+Plot_school
+```
+
+We will use `n = 763` as our network size below, and this curve as a rough visual benchmark for the simulated epidemics.
+
+## Part A: three comparable networks (provided, no modelling required)
+
+1. Generate and plot three networks with `n=763` nodes and a `mean_degree_target` of `6` according to (a) an Erdos-Renyi model, (b) a Barabasi-Albert algorithm and (c) a Watts-Strogatz algorithm.
+
+Any difference in how an epidemic spreads in Part B will be attributable to network *structure*, but *size* and *density*.
+
+*Indication*: feel free to use the `sample_gnm()`, `sample_pa()` and `sample_smallworld()` 
+functions from the `igraph` package.
+
+```{r graph setup, warning=FALSE}
+library(igraph)
+library(ggraph)
+library(tidygraph)
+library(patchwork)
+library(extrafont)
+library(ggdist)
+library(tidyverse)
+
+# font_import()          # ~3 min,
+# loadfonts(device = "win")
+
+set.seed(21)
+
+n <- 763
+mean_degree <- 6
+p <- mean_degree/n
+m <- 3 #mean degree ~ 2m = 6, can alos use as nei in small world model: mean degree = 2* nei
+
+g_er <- sample_gnp(n=n, p=p, directed = FALSE)
+g_ba <- sample_pa(n=n, m=m, power = 1, directed  = FALSE)
+g_ws <- sample_smallworld(size=n, dim = 1, nei = m, p = 0.1)
+
+custom_palette <- c("#aa2323", "#54155d", "#1c6e3d", "#18246e" )
+```
+
+
+```{r hairballs, warning=FALSE}
+#| fig-align: center
+#| fig-width: 9
+
+Plot_ER <- ggraph(g_er, layout = "kk") +
+  geom_edge_link0(edge_colour = "grey55", alpha = 0.3) +
+  geom_node_point(size = 1) +
+  theme_graph() +
+  labs(title = "Erdos-Renyi Graph",
+       subtitle = paste0("p = ", round(p,4))) +
+  theme(plot.title = element_text(face='plain'))
+
+
+Plot_BA <- ggraph(g_ba, layout = "kk") +
+  geom_edge_link0(edge_colour = "grey55", alpha = 0.3) +
+  geom_node_point(size = 1) +
+  theme_graph() +
+  labs(title = "Barabasi-ALbert Graph",
+       subtitle = "m = 3, mean degree ~ 2m") +
+  theme(plot.title = element_text(face='plain'))
+
+Plot_WS <- ggraph(g_ws, layout = "kk") +
+  geom_edge_link0(edge_colour = "grey55", alpha = 0.3) +
+  geom_node_point(size = 1) +
+  theme_graph() +
+  labs(title = "Watts-Strogatz Graph",
+       subtitle = "nei = 3, mean degree ~ 2 x nei") +
+  theme(plot.title = element_text(face='plain'))
+
+#===== produce the plot =====#
+
+(Plot_ER | Plot_BA | Plot_WS) +
+  plot_annotation(
+    title = "Three models for epidemic spreads, n = 763",
+    theme = theme(plot.title = element_text(size = 25, face = 'bold'))
+  )
+
+```
+
+2. Also plot compare the degree distribution of the three networks and comment briefly (3-5 sentences).
+
+```{r degree distributions, warning = FALSE}
+#| fig-align: center
+#| fig-width: 9
+
+degree_df <- bind_rows( #issue with render otherwise
+  g_er %>% as_tbl_graph() %>%
+    activate(nodes) %>%
+    mutate(degree = centrality_degree()) %>%
+    as_tibble() %>%
+    mutate(model = 'Erods-Renyi'), 
+  g_ba %>% as_tbl_graph() %>%
+    activate(nodes) %>%
+    mutate(degree = centrality_degree()) %>%
+    as_tibble() %>%
+    mutate(model = 'Barabasi-Albert'), 
+  g_ws %>% as_tbl_graph() %>%
+    activate(nodes) %>%
+    mutate(degree = centrality_degree()) %>%
+    as_tibble() %>%
+    mutate(model = 'Watts-Strogatz'))
+
+degree_df %>%
+  ggplot(aes(y = '', x = degree, fill = model)) +
+  stat_halfeye(scale = 1, adjust = 4, .width = 0, alpha = 0.5, point_colour = NA) +
+  stat_dotsinterval(side = 'left', quantiles = 50, show_point = FALSE) +
+  #stat summary had a bug, so annotate exactly
+  annotate("point", x = mean(degree(g_ba)), y = '', size = 3, colour = "black") +
+  geom_vline(aes(xintercept = 6), linetype = 'dashed') +
+  facet_wrap(~ model) + 
+  scale_x_continuous(limits = c(0,20)) +
+  scale_fill_manual(values = custom_palette) +
+  labs( y = "",
+        title = "Model degree distribution comparison",
+        subtitle = "Dotted line at target mean degree of 6") +
+  theme_minimal() +
+  theme(legend.position = 'none',
+        plot.title = element_text(size =20),
+        strip.text = element_text(face = 'bold'))
+
+```
+
+All models have the target mean degree. The Erdos-Renyi graph has an almost normal distribution, which is expected given that every edge is placed with independent probability and this model has a poisson distribution which tends to a normal distribution for large n. The Barabasi-Albert graph has a right skewed distribution, which again is expected because the preferential attachment model means a few, early nodes get most of the attachments, and hence have a higher degree - it follows a power law distribution. While the Watt-Strogatz model has a very peaked distribution centred around the mean degree of 6. Most nodes are of a similar degree with a high peak, and looks like rapid decrease out to the edges, so perhaps exponential decay. 
+
+
+
+## Part B: does an epidemic spread the same way on each network? (your main task)
+
+The `simulate_sir_network()` function below runs a simple discrete-time SIR-type process on any `igraph` network: each infected node infects each susceptible neighbour with probability `beta` per step, then recovers with probability `gamma`. It is provided for you.
+
+```{r simulate sir func}
+simulate_sir_network <- function(g, beta, gamma, n_infected_init = 1,
+                                  n_steps = 100, seed = NULL) {
+  if (!is.null(seed)) set.seed(seed)
+  n <- vcount(g)
+  status <- rep("S", n)
+  status[sample(seq_len(n), n_infected_init)] <- "I"
+
+  out <- data.frame(day = seq_len(n_steps), S = NA, I = NA, R = NA)
+
+  for (t in seq_len(n_steps)) {
+    infected_nodes <- which(status == "I")
+    if (length(infected_nodes) == 0) {
+      out[t:n_steps, c("S", "I", "R")] <-
+        matrix(c(sum(status == "S"), 0, sum(status == "R")),
+               nrow = n_steps - t + 1, ncol = 3, byrow = TRUE)
+      break
+    }
+
+    new_infected <- integer(0)
+    for (node in infected_nodes) {
+      nb <- neighbors(g, node)
+      sus_nb <- nb[status[nb] == "S"]
+      if (length(sus_nb) > 0) {
+        newly <- sus_nb[runif(length(sus_nb)) < beta]
+        new_infected <- union(new_infected, as.integer(newly))
+      }
+    }
+    recovers <- infected_nodes[runif(length(infected_nodes)) < gamma]
+
+    status[new_infected] <- "I"
+    status[recovers] <- "R"
+
+    out$S[t] <- sum(status == "S")
+    out$I[t] <- sum(status == "I")
+    out$R[t] <- sum(status == "R")
+  }
+  out
+}
+```
+
+Now it's your turn. Using `simulate_sir_network()`:
+
+3. Run the simulation on the three networks you have created in Part A, with the **same** 
+`beta`, `gamma`, `n_infected_init` and `seed`, so the only thing that differs is network 
+structure. (but feel free to explore different parameters?!)
+4. Combine the three results into a unique data frame (add a `model` column).
+5. Plot the number infected `I` over time for all three models on the same axes, so they are directly comparable.
+6. Compare against the real boarding-school curve above (informally is fine: same rough shape? faster/slower? bigger/smaller peak?).
+
+```{r SIr sim setup}
+beta <- 0.15
+gamma <- 0.2
+n_steps <- 60
+n_infected_init <- 3 # I match the #(initial real cases)
+seed <- 21
+
+sir_er <- simulate_sir_network(g_er, beta = beta, gamma = gamma, n_infected_init = n_infected_init, n_steps = n_steps, seed = seed)
+sir_ba <- simulate_sir_network(g_ba, beta = beta, gamma = gamma, n_infected_init = n_infected_init, n_steps = n_steps, seed = seed)
+sir_ws <- simulate_sir_network(g_ws, beta = beta, gamma = gamma, n_infected_init = n_infected_init, n_steps = n_steps, seed = seed)
+
+sir_all <- rbind(
+  cbind(sir_er, model = "ER"),
+  cbind(sir_ba, model = "BA"),
+  cbind(sir_ws, model = "WS")
+)
+```
+
+```{r SIR simulaiton}
+#| fig-align: center
+#| fig-width: 10
+
+Plot_sir <- sir_all %>%
+  ggplot(aes(col = model, x = day, y = I)) +
+  geom_point() +
+  geom_line() +
+  geom_hline(aes(yintercept = 293), linetype ='dashed') +
+  geom_vline(aes(xintercept = 14), linetype ='dashed') +
+  annotate("text", x = 22, y = 310, label = "dashed lines show boarding school\npeak(y) and length(x)", hjust = 0, size = 3) +
+  scale_colour_manual(values = custom_palette) + 
+  scale_y_continuous(breaks = seq(min(sir_all$I), max(sir_all$I), by = 20),
+                     limits = c(0, 340),
+                     expand = expansion(mult = 0, add = 0)) +
+  scale_x_continuous(breaks = seq(min(sir_all$day), max(sir_all$day), by = 3),
+                     limits = c(1, 60),
+                     expand = expansion(mult = 0, add = 1)) +
+  labs(
+    title = "Outbreak under different models",
+    subtitle = "n = 763 boys, gamma  = 0.2, beta = 0.15",
+    y = "", 
+    x = "Days since first infection") +
+  theme_minimal() 
+
+
+(Plot_school | Plot_sir) +
+  plot_annotation(title = 'Models assume slower peak and longer infection time than reality',
+                  theme = theme(plot.title = element_text(size = 20, face = 'bold')))
+```
+
+The original outbreak peaked after about 6 days and the infection lasted around 17 or so days. The models all peak later. BA at 10 days with a peak of340, ER at 12 days with 300, and WS around 20 days with around 235. So the beta value seems roughly correct for th eER model, but too high for the BA and too low for the ER. The models also all assume longer infection timeframes (higher gamma than the real world). BA dies out around day 31, ER around day 35 and WS around day 50. Their shapes roughly mimic the original curve, but not exactly. The closest is the BA model with a sharp increase in infections followed by a sharp decline. Implying that in the boarding school, perhaps infections spread preferentially via friend groups, dorm rooms or maybe even classes. 
+
+## Part C: a second scenario
+
+7. Try changing one thing and re-running the comparison above. For example: seed the first infection at a high-degree "hub" node instead of a random node, or change `beta`/`gamma`, or change `mean_degree_target` in Part A. Does the ranking of the three network models (which spreads fastest/furthest) stay the same?
+
+```{r part C simulation}
+#| fig-align: center
+#| fig-width: 8
+# Scenario: your choice!
+#I will change the infectiousness of the models
+beta <- 0.3 #infectiousness - chance of passing on the love... lots of trial and error
+gamma <- 0.2 #length of infection
+n_steps <- 60
+n_infected_init <- 3 # I match the #(initial real cases)
+seed <- 21
+
+sir_er <- simulate_sir_network(g_er, beta = beta, gamma = gamma, n_infected_init = n_infected_init, n_steps = n_steps, seed = seed)
+sir_ba <- simulate_sir_network(g_ba, beta = beta, gamma = gamma, n_infected_init = n_infected_init, n_steps = n_steps, seed = seed)
+sir_ws <- simulate_sir_network(g_ws, beta = beta, gamma = gamma, n_infected_init = n_infected_init, n_steps = n_steps, seed = seed)
+
+sir_all <- rbind(
+  cbind(sir_er, model = "ER"),
+  cbind(sir_ba, model = "BA"),
+  cbind(sir_ws, model = "WS")
+)
+
+ggplot(data = sir_all, aes(col = model, x = day, y = I)) +
+  geom_point() +
+  geom_line() +
+  geom_hline(aes(yintercept = 293), linetype ='dashed') +
+  geom_vline(aes(xintercept = 14), linetype ='dashed') +
+  annotate("text", x = 30, y = 340, label = "dashed lines show boarding school\npeak(y) and length(x)", hjust = 0, size = 3) +
+  scale_colour_manual(values = custom_palette) + 
+  scale_y_continuous(breaks = seq(min(sir_all$I), 460, by = 20),
+                     # limits = c(0, 320),
+                     expand = expansion(mult = 0, add = 10)) +
+  scale_x_continuous(breaks = seq(min(sir_all$day), max(sir_all$day), by = 3),
+                     limits = c(1, 60),
+                     expand = expansion(mult = 0, add = 1)) +
+  labs(
+    title = "Doubling infectiousness (gamma) makes the disease spread faster to more people\nand die out quicker",
+    subtitle = paste0("n = 763 boys, gamma  = ,", gamma, " beta = ", beta),
+    y = "Number infected", 
+    x = "Days since first infection",
+    ) +
+  theme_minimal() 
+
+
+```
+
+## Written commentary
+
+8. Did the epidemic spread similarly or differently across the ER, BA and WS networks, and why (in terms of network structure)?
+
+Doubling the gamma to 0.3 from 0.15 made the disease spread faster, quicker and last shorter, given the same beta. The result is that all the models' peaks shifted to the left (became more right skewed). Their shapes became more similar. Clearly, this is because a more infectious disease spreads to more people initially. Because an infected person can't be reinfected in this simulation, at later time periods there are fewer people to infect. So the infection under all models peaks earlier and dies down earlier. In the extreme, we could get a disease where on day 1 everyone is infected irrespective of the underlying model. So, we might say that more infectious diseases spread in a similar way, ceteris paribus. At least under the three models used here (Erdos-Renyi, Barabasi-Albert and Watts-Strogatz)
+
+
+
+9. How does your simulated epidemic compare to the real boarding-school outbreak curve, and what does that suggest about which (if any) of the three network models is a more realistic contact structure?
+
+To help answer this I added in dashed lines to show the school curve's limits. More infectious curves peak closer to the day 6 peak of the school curve. In fact, the BA graph looks to peak at day 7 with approximately 460 pupils, so very close in time, but not in height. The BA curve also dies down fastest, by roughly day 25. Still much later than the 14 day infection of the school. Perhaps the school disease had a shorter infectious period (gamma). Other models are different shade of the BA model under this beta parameter. Only with lower peaks and longer tails. 
+This suggests that the BA model is a more realistic contact structure when compared to the school curve. However, this does not necessarily mean it is a good model overall. A BA graph is scale free (power law distribution), which means that in theory the epidemic could have an infinite threshold and never die down because the heavily trafficked hubs enable perpetual travel of the disease. It can continue to infect forever, provided the network is large enough. 763 is not so large, so here the threshold vanishes, but expose this to a larger population, like the world, and the model may be outside its zone of usefulness. Whereas for both the other models people are roughly equally connected (either random in the ER or to their neighbours in WS) and the disease needs to be above a minimum contagiousness to spread. The high infectiousness here made them spread faster. In reality people do not move randomly so the ER model is not a good model to extrapolate to reality. The WS model perhaps would extrapolate better, because most people have a few main connections. However, people do move around in unexpected and expected ways. People have habitual locations; home, work, gym, clubs etc, and unexpected ones: mechanic, restaurants, hospitals. Meaning people move around hubs and near neighbours. So while the BA was the best model in a boarding school, the most realistic model is probably a mix of the BA and the WS model. 

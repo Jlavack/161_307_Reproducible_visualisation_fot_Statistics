@@ -1,0 +1,131 @@
+---
+title: "Going for a random walk"
+subtitle: "Portfolio 5 - 161.307 Reproducible Visualisation for Statistics"
+author: "John Lavack 20001249"
+date: "12 August 2026"
+date-format: "D MMM YYYY"
+lang: en-GB
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    toc-float: true
+    number-sections: false
+    number-offset: -1
+    theme: cosmo
+    highlight-style: github
+    code-fold: false
+    self-contained: true
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+```{r, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+```
+
+
+  
+# Simulating a random walk
+
+```{r random}
+set.seed(21)
+# n_sample <- 100
+# random_vec <- rnorm(n_sample, 0, 1)
+
+n_steps <- 100
+n_sims  <- 100
+
+#for the spaghetti plot - copied from the lab
+sims <- lapply(1:n_sims, function(i) {
+  data.frame(sim = i, time = 1:n_steps,
+             position = cumsum(rnorm(n_steps, mean = 0.1, sd = 2)))
+})
+sims <- bind_rows(sims)
+
+#for the ribbon plot - copied from the lab
+summary_df <- sims |>
+  group_by(time) |>
+  summarise(
+    median  = median(position),
+    lower50 = quantile(position, 0.25),
+    upper50 = quantile(position, 0.75),
+    lower90 = quantile(position, 0.05),
+    upper90 = quantile(position, 0.95),
+    lower100 = quantile(position, 0),
+    upper100 = quantile(position, 1),
+    .groups = "drop"
+  )
+```
+
+# Visualising the random walk
+```{r}
+#| fig-width: 15
+#| fig-height: 8
+
+#using these to set a consistent y axis for both plots. 
+y_min <- min(sims$position, summary_df$lower100, na.rm = TRUE)
+y_max <- max(sims$position, summary_df$upper100, na.rm = TRUE)
+
+#Spaghetti plot
+A <- ggplot(sims, aes(x=time, y=position)) +
+  geom_line(aes(group = sim), alpha = 0.6, colour = "steelblue") +
+  labs(title = "Spaghetti plot",
+       subtitle = "median walk in red",
+       x = "Time", 
+       y = "Position") +
+  geom_line(data = summary_df, aes(x=time, y=median), colour = 'red') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(size =10),
+        axis.title.x = element_text(size =15),
+        axis.title.y = element_text(size =15),
+        plot.title = element_text(size = 20))
+
+#ribbon plot
+B <- ggplot(summary_df, aes(time)) +
+  geom_ribbon(aes(ymin = lower100, ymax = upper100),
+              alpha = 0.1, fill = "steelblue") +
+  geom_ribbon(aes(ymin = lower90, ymax = upper90),
+              alpha = 0.2, fill = "steelblue") +
+  geom_ribbon(aes(ymin = lower50, ymax = upper50),
+              alpha = 0.4, fill = "steelblue") +
+  geom_line(aes(y = median), colour = "steelblue", linewidth = 1) +
+  labs(title = "Ribbon plot",
+  subtitle = "median, 50%, 90% and 100% intervals",
+       x = "Time", y = "") +
+  theme_minimal() +
+  theme(axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(size =10),
+        axis.title.x = element_text(size = 15),
+        plot.title = element_text(size = 20))
+
+A <- A + ylim(y_min, y_max)
+B <- B + ylim(y_min, y_max)
+
+#assembling the plots with patch work
+(A | B) + 
+  plot_annotation(
+    title = "Random Walk Process with 100 Simulations",
+    subtitle = "drift = 0.1, sd = 2",
+    theme = theme(plot.title = element_text(size = 30, hjust = 0.5, face = "bold"),                  
+                  plot.subtitle = element_text(size = 20, hjust = 0.5, face = "italic"))
+  ) +
+  plot_layout(nrow = 1, axis_titles = "collect")
+
+```
+
+
+# Discussion/Conclusion
+
+
+Comparing the two plots the spaghetti plot shows simulated walks while the ribbon plot shows the bounds of these simulated plots. The former shows the process, but one can't easily grasp the limits of it. The latter is the opposite. One can imagine the possibility space, but not see an example play out. Both deal with variability and uncertainty. Wilke (2020) states that
+> "When we see a data point drawn in a specific location, we tend to interpret it as a precise representation of the true data value. It is difficult to conceive that a data point could actually lie somewhere it hasn’t been drawn."
+
+For each graph above, this is the case. Neither show real data, only possibilities that could be observed. The variability of the future process.  
+A technical audience with knowledge of the process would understand statistical concepts such as variability and not interpret the spaghetti chart as reality. I would use the spaghetti chart for a technical audience. For a lay audience I would use the ribbon chart, because it helps to explain the uncertainty while being non-committal to a single scenario. 
+

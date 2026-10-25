@@ -1,0 +1,147 @@
+---
+title: "Portfolio 1: Plastic, plastic, everywhere"
+author: "John Lavack 20001249"
+format:
+  html:
+    embed-resources: true
+---
+
+```{r dont touch this code chunk, warning=FALSE}
+#| message: false
+#| echo: false
+
+library(tidyverse)
+
+lego_sets <- read_csv("https://www.massey.ac.nz/~jcmarsha/data/lego/lego_sets.csv")
+lego_parts <- read_csv("https://www.massey.ac.nz/~jcmarsha/data/lego/lego_parts.csv.gz")
+
+set_weights <- lego_parts |>
+  group_by(set) |>
+  summarise(weight = sum(weight*quantity, na.rm=TRUE))
+
+sets_with_weight <- lego_sets |>
+  left_join(set_weights, by=join_by(set)) 
+```
+
+## data cleaning
+```{r, data cleaning- trim out nulls}
+#there are missing values in the data. These will be removed
+#skimr::skim(sets_with_weight) #only using skimr once, so will not attach the library. 
+
+lego_plot_data <- sets_with_weight %>% filter(!is.na(price)) %>%
+  mutate(price_per_gram = price/weight)
+```
+
+
+
+## Your Figure
+
+```{r, set_price data}
+#Make the set price data frame for the 'store; lines.
+set_price <- lego_sets %>% 
+  group_by(year, theme) %>%         
+  summarise(
+    average_price = mean(price, na.rm = TRUE), 
+    .groups = "drop"
+  ) %>% 
+  group_by(theme) %>% #got to regroup to get the average per theme, rather than average of all data, then grouped by theme
+    mutate(price_scaled = scales::rescale(average_price, to =c(min(lego_plot_data$price_per_gram),max(lego_plot_data$price_per_gram))) #I'm only using scales once, so will not attached the library.I am scaling it the price per gram 
+  ) %>% 
+  ungroup()
+
+```
+
+
+
+```{r price per gram, fig.width= 10, fig.height=10}
+# price per gram for each lego set
+# price per gram = price/weight
+# to let the reader know if prices are going up or down, I will calculate the slop of the trend line and display it on each facet. Which means I will need to fit a model and extract the coefficients for the annotation. 
+# I will show the average price per set each year and show how it increases. A line with a trend. Scaled to between 0 and 1 so I can show both on the same axis. 
+# Showing data on the same scale can be misleading, so I will add a caption to explain what is going on.
+# Because I want to be ambitious, the key will be a pain to sort out. I will show one key for trendlines only. Readers will need to know that the trendline is for proie per gram and the other lines are for scaled prices
+
+#slope for price per gram
+slope_data <- lego_plot_data %>% group_by(theme) %>%
+  summarise(
+    slope = coef(lm(price_per_gram ~ year))[2],
+    .groups = 'drop'
+  )
+#slope for average price by theme
+slope_data_2 <- set_price %>% group_by(theme) %>%
+  summarise(
+    slope = coef(lm(average_price ~ year))[2],
+    .groups = 'drop'
+  )
+
+#create a labeller for the facet wraps with the slopes
+label_data <- left_join(slope_data, slope_data_2, by = 'theme') %>%
+  mutate(label = paste0(theme, "\n", "$/g Slope: ", round(slope.x, 4), "\n", "Set price slope: ", round(slope.y, 2))) %>%
+  select(theme, label) %>% deframe()
+
+#different color per facet requirement and different colors from defaults requirement
+colours = tribble(~name, ~colour,
+        'Architecture',      '#855C75',
+        'Creator',           '#D9AF6B',
+        'Friends',           '#736F4C',
+        'Ideas',             '#526A83',
+        'Modular Buildings', '#625377',
+        'Ninjago',           '#68855C',
+        'Star Wars',         '#A06177',
+        'Technic',           '#8C785D',
+        'Town',              '#467378') |>
+  deframe() #colors come from rcartocolor antique palette, but It removed the reddish ones to make the trend line easier to see.
+
+#Plot from here - I am explicitly showing or not showing legend for each geom so that I can come back later and figure out what I did. 
+ggplot(data = lego_plot_data, aes(x = year, y = price_per_gram)) +
+  #show all data req for $p/g
+  geom_point(aes(color = theme), position=position_jitter(), alpha = 0.5,
+             show.legend = FALSE) +
+  #price per gram trend - trend requirement for $p/g
+   geom_smooth(aes(col = 'Price per gram', linetype = 'Price per gram'), 
+              formula = y ~ x, method = 'lm', se = FALSE, linewidth = 0.7, 
+              show.legend = TRUE) +  
+  #average price by theme trend
+  geom_smooth(data = set_price, 
+              aes(x= year, y = price_scaled, col = "Average Set Price", linetype = "Average Set Price"), 
+              formula = y ~ x, method = 'lm', se = FALSE, linewidth = 0.7,
+              show.legend = TRUE) +
+  #line for average price per theme
+  geom_line(data = set_price, aes(x= year, y = price_scaled, col = theme),  show.legend = FALSE) +
+  #facet requirement
+  facet_wrap(vars(theme), labeller = as_labeller(label_data)) +
+  #scale config
+  scale_x_continuous(breaks = seq(min(lego_plot_data$year), max(lego_plot_data$year), by = 1)) +
+  scale_y_continuous(breaks = seq(min(lego_plot_data$price_per_gram), max(lego_plot_data$price_per_gram), by = 0.1),
+                     sec.axis = sec_axis(transform = ~., name = 'Scaled Average Set Price')) + #adding secondary axis for the average set price
+  #legend config - this part is tricksy, so I am making each argument really clear for when I need to debug and re-read it in future. 
+  scale_color_manual(
+    name = 'Trendlines',
+    values = c(colours, "Price per gram" = "red", "Average Set Price" = "black"), 
+    breaks = c("Price per gram", "Average Set Price"), 
+    labels = c("Price per gram", "Average Price by Theme")
+  ) +
+  
+  scale_linetype_manual(
+    name = 'Trendlines',
+    values = c("Price per gram" = "solid", "Average Set Price" = "dotted"),
+    breaks = c("Price per gram", "Average Set Price"),
+    labels = c("Price per gram", "Average Price by Theme")
+  ) +
+  #theme config
+  theme_minimal() + 
+  theme(legend.position = "top", axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+        ) +
+  #label requirement
+  labs(
+    y = "Price per gram ($/g)",
+    x = 'Year',
+    title = "Lego Set Price Per Gram Changed Little Between 2012 to 2021",
+    subtitle = "While average set price increased for each set theme",
+    caption = 'Average price per year has been standardised to between 0 and 1 in order to show on the same scale as price per gram. \nAverage scaled set price values shows do not represent real prices',
+    ) 
+
+```
+
+
+

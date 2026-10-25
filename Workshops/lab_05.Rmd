@@ -1,0 +1,294 @@
+---
+title: "Lab05"
+author: "John Lavack 20001249"
+date: "2026-08-09"
+output: html_document
+---
+
+```{r}
+library(ggplot2)
+library(dplyr)
+```
+
+
+Tutorial 1: Generating and plotting single realisations
+1.1 A random walk
+
+```{r}
+set.seed(2026)
+n <- 100
+
+walk_df <- data.frame(
+  time = 1:n,
+  position = cumsum(rnorm(n, mean = 0, sd = 1))
+)
+
+ggplot(walk_df, aes(time, position)) +
+  geom_line(colour = "steelblue") +
+  labs(title = "Random walk, sd = 1",
+       x = "Step", y = "Position") +
+  theme_minimal()
+```
+* * *
+
+
+Exercise 1.1 - Re-run the simulation with sd = 0.5 and sd = 2 (use a new seed for each so they’re distinguishable, but record the seeds). Plot all three on the same axes using colour to distinguish them. What do you notice about the range of the y-axis as sd changes?
+
+```{r}
+set.seed(21)
+n <- 100
+
+walk_df <- rbind(
+  data.frame(
+  time = 1:n,
+  position = cumsum(rnorm(n, mean = 0, sd = 1)),
+  walk = 'A'
+  ),
+  data.frame(
+  time = 1:n,
+  position = cumsum(rnorm(n, mean = 0, sd = 0.5)),
+  walk = 'B'
+  ),
+data.frame(
+  time = 1:n,
+  position = cumsum(rnorm(n, mean = 0, sd = 2)),
+  walk = 'C'
+  )
+)
+
+
+
+ggplot(walk_df, aes(x=time, y=position, col = walk)) +
+  geom_line() +
+  labs(title = "Random walk, sd = 1",
+       x = "Step", y = "Position") +
+  theme_minimal()
+```
+
+
+1.2 Faceting by parameter
+Exercise 1.2 - Instead of overlaying, generate one realisation each for sd ∈ {0.5, 1, 2} and drift ∈ {0, 0.1} (i.e. add a constant to each step: rnorm(n, mean = drift, sd = sd)), giving 6 combinations. Store them in one long data frame with columns time, position, sd, drift, then use facet_grid(sd ~ drift) to display all 6 panels. Make sure axis labels and a shared title clearly communicate what varies between panels.
+
+> Reproducibility checkpoint: make sure your seed is set once, before the loop/replicate() that generates all 6 series .Do not reset inside the loop and document why that matters.
+
+```{r}
+set.seed(21)
+n <- 100
+
+random_walk <- function(n, drift, sd, walk) {
+  walk_data <-  data.frame(
+    time = 1:n,
+    position = cumsum(rnorm(n, mean = drift, sd = sd)),
+    walk = walk)
+  return(walk_data)
+}
+
+params <- expand.grid(
+  drift = c(0, 0.1),
+  sd = c(0, 1, 2)
+)
+
+params$scenario_id <- 1:nrow(params)
+
+all_walks <- do.call(rbind, lapply(1:nrow(params), function(i) {
+  sim <- random_walk(
+    n = 100,                # Number of steps
+    drift = params$drift[i], 
+    sd = params$sd[i], 
+    walk = paste0("Walk_", params$scenario_id[i])
+  )
+  # Append the parameters to the simulation data for faceting
+  sim$drift <- params$drift[i]
+  sim$sd <- params$sd[i]
+  return(sim)
+}))
+
+# Convert parameters to factors for cleaner facet labels
+all_walks$drift <- factor(all_walks$drift)
+all_walks$sd <- factor(all_walks$sd)
+
+# 4. Plot using facet_grid(sd ~ drift)
+ggplot(all_walks, aes(x = time, y = position, group = walk, color = walk)) +
+  geom_line() +
+  facet_grid(sd ~ drift) +  # Rows = sd, Columns = drift
+  labs(title = "Random Walk Scenarios", x = "Time", y = "Position") +
+  theme_minimal() 
+
+#ggplot(walk_df, aes(x=time, y=position, col = walk)) +
+  # geom_line() +
+  # labs(title = "Random walk, sd = 1",
+  #      x = "Step", y = "Position") +
+  # facet_grid(sd ~ drift)
+  # theme_minimal()
+```
+
+#Tutorial 2: Many realisations - spaghetti and small multiples
+2.1 Generating an ensemble
+
+```{r}
+set.seed(2026)
+n_steps <- 100
+n_sims  <- 50
+
+sims <- lapply(1:n_sims, function(i) {
+  data.frame(sim = i, time = 1:n_steps,
+             position = cumsum(rnorm(n_steps)))
+})
+sims <- bind_rows(sims)
+```
+
+
+##2.2 Spaghetti plot
+
+```{r}
+ggplot(sims, aes(time, position, group = sim)) +
+  geom_line(alpha = 0.15, colour = "steelblue") +
+  labs(title = "50 random walk realisations") +
+  theme_minimal()
+```
+
+
+Exercise 2.1 - Try alpha = 1, alpha = 0.3, alpha = 0.05 with n_sims = 50, then repeat with n_sims = 500. Produce a small grid of these (e.g. with patchwork or facet_wrap over a manually-created “version” column) and write 2-3 sentences: at what combination of n and alpha does the plot stop being useful, and why?
+```{r}
+n_steps <- 100
+n_sims  <- 50
+
+sims <- lapply(1:n_sims, function(i) {
+  data.frame(sim = i, time = 1:n_steps,
+             position = cumsum(rnorm(n_steps)))
+})
+sims <- bind_rows(sims)
+
+ggplot(sims, aes(time, position, group = sim)) +
+  geom_line(alpha = 1, colour = "steelblue") +
+  labs(title = "50 random walk realisations") +
+  theme_minimal()
+
+ggplot(sims, aes(time, position, group = sim)) +
+  geom_line(alpha = 0.3, colour = "steelblue") +
+  labs(title = "50 random walk realisations") +
+  theme_minimal()
+
+ggplot(sims, aes(time, position, group = sim)) +
+  geom_line(alpha = 0.5, colour = "steelblue") +
+  labs(title = "50 random walk realisations") +
+  theme_minimal()
+
+n_sims  <- 500
+
+sims <- lapply(1:n_sims, function(i) {
+  data.frame(sim = i, time = 1:n_steps,
+             position = cumsum(rnorm(n_steps)))
+})
+sims <- bind_rows(sims)
+
+ggplot(sims, aes(time, position, group = sim)) +
+  geom_line(alpha = 1, colour = "coral") +
+  labs(title = "50 random walk realisations") +
+  theme_minimal()
+
+ggplot(sims, aes(time, position, group = sim)) +
+  geom_line(alpha = 0.3, colour = "coral") +
+  labs(title = "50 random walk realisations") +
+  theme_minimal()
+
+ggplot(sims, aes(time, position, group = sim)) +
+  geom_line(alpha = 0.5, colour = "coral") +
+  labs(title = "50 random walk realisations") +
+  theme_minimal()
+```
+
+
+##2.3 Small multiples
+```{r}
+sims |>
+  filter(sim <= 9) |>
+  ggplot(aes(time, position)) +
+  geom_line(colour = "steelblue") +
+  facet_wrap(~ sim, nrow = 3) +
+  labs(title = "9 of 50 realisations") +
+  theme_minimal()
+```
+
+
+Exercise 2.2 - Small multiples don’t scale to 50 panels on one slide/page. Find (empirically, by trying it) roughly how many panels you can fit in a facet_wrap before the plot becomes unreadable at a typical screen size. Report the number and the fig-width/fig-height you used.
+
+##2.4 Discussion (bring to class)
+For the random walk ensemble, which representation among spaghetti or small multiples better conveys:
+the typical trajectory shape,
+the spread of outcomes at the final time point,
+whether any individual trajectory is unusual?
+Is there a process (think of examples from your own field of interest) where small multiples would clearly be preferable, regardless of n?
+
+* * *
+
+#Tutorial 3: Summarising ensembles
+3.1 From realisations to summaries
+
+```{r}
+set.seed(2026)
+n_steps <- 100
+n_sims  <- 500
+
+sims_big <- lapply(1:n_sims, function(i) {
+  data.frame(sim = i, time = 1:n_steps,
+             position = cumsum(rnorm(n_steps)))
+})
+sims_big <- bind_rows(sims_big)
+
+summary_df <- sims_big |>
+  group_by(time) |>
+  summarise(
+    median  = median(position),
+    lower50 = quantile(position, 0.25),
+    upper50 = quantile(position, 0.75),
+    lower90 = quantile(position, 0.05),
+    upper90 = quantile(position, 0.95),
+    .groups = "drop"
+  )
+```
+
+Exercise 3.1 - Before plotting, predict: will the 90% band get wider or narrower over time for a random walk with no drift? Why? Then check your prediction against the plot in Section 3.2.
+
+##3.2 Ribbon plots and comparison
+```{r}
+ggplot(summary_df, aes(time)) +
+  geom_ribbon(aes(ymin = lower90, ymax = upper90),
+              alpha = 0.2, fill = "steelblue") +
+  geom_ribbon(aes(ymin = lower50, ymax = upper50),
+              alpha = 0.4, fill = "steelblue") +
+  geom_line(aes(y = median), colour = "steelblue", linewidth = 1) +
+  labs(title = "Random walk: median, 50% and 90% intervals (500 sims)",
+       x = "Time", y = "Position") +
+  theme_minimal()
+```
+
+
+Exercise 3.2 - Add a few individual trajectories (e.g. 10 randomly sampled sim values, using geom_line with low alpha) on top of the ribbon plot. Does this help or clutter? Try it both ways and pick the version you think communicates better. Justify your choice in 1–3 (short if 3) sentences.
+
+```{r}
+selected_sims <- sims_big %>%
+  distinct(sim) %>%
+  slice_sample(n = 10) %>%
+  pull(sim)
+
+random_samples_full <- sims_big %>%
+  filter(sim %in% selected_sims) %>%
+  mutate(sim = as.factor(sim))
+
+ggplot(summary_df, aes(time)) +
+  geom_ribbon(aes(ymin = lower90, ymax = upper90),
+              alpha = 0.2, fill = "steelblue") +
+  geom_ribbon(aes(ymin = lower50, ymax = upper50),
+              alpha = 0.4, fill = "steelblue") +
+  geom_line(aes(y = median), colour = "steelblue", linewidth = 1) +
+  geom_line(data = random_samples_full, aes(x = time, y = position, col = sim),linewidth = 0.5, alpha = 0.5) +
+
+  labs(title = "Random walk: median, 50% and 90% intervals (500 sims)",
+       x = "Time", y = "Position") +
+  theme_minimal()
+
+```
+
+
+Looking ahead: keep your ensemble data frame (or the code that generates it). Week 6’s tutorials will revisit the ribbon idea, but applied to model-based intervals (confidence/prediction intervals, bootstrap distributions) rather than simulation ensembles. The visual grammar is the same; the source of the uncertainty differs.

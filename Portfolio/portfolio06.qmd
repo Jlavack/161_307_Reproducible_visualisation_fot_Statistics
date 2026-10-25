@@ -1,0 +1,179 @@
+---
+title: "Credibility Uncertain"
+subtitle: "Portfolio 6 - 161.307 Reproducible Visualisation for Statistics"
+author: "John Lavack 20001249"
+date: "19 August 2026"
+date-format: "D MMM YYYY"
+lang: en-GB
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    toc-float: true
+    number-sections: false
+    number-offset: -1
+    theme: cosmo
+    highlight-style: github
+    code-fold: false
+    self-contained: true
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+```{r}
+library(tidyverse)
+library(patchwork)
+```
+
+ 
+## Part A: encoding the same uncertainty two ways
+
+In part A I will use the iris data set and bootstrap sample 1000 times the slope for a model predicting petal length using sepal length. The image will not be about the model, but the variability in the prediction from the bootstrapped samples slopes. First I'll show the uncertainty in the bootstrapped slope as a density plot. Next the uncertainty in the petal length prediction derived from the variability of the 1000 slope estimates, as a fan chart. 
+
+```{r making the data}
+# I am going to bootstrap the iris data set, and reuse the bootstrapping code from the lecture. 
+set.seed(1848)
+
+n_boot <- 1000
+
+boot_sample <- replicate(n_boot, {
+  boot_sample <- iris[sample(nrow(iris), replace = TRUE), ]
+  coef(lm(Petal.Length ~ Sepal.Length, data = boot_sample))["Sepal.Length"]
+} )
+
+boot_df <- data.frame(slope = as.numeric(boot_sample))
+
+# for the fan chart... this part took ages, but once I was in, I didn't want to quit. 
+x_seq <- as.numeric(seq(min(iris$Sepal.Length), max(iris$Sepal.Length), length.out = 100))
+
+fit <- lm(Petal.Length ~ Sepal.Length, data = iris)
+mean_intercept <- coef(fit)[1] #for the fan to pass through the intercept
+
+#Predict some regression lines. have to coerce the slopes and x sequence into numeric vectors. 
+predictions <- outer(as.numeric(x_seq), as.numeric(boot_sample), "*") + mean_intercept
+
+#convert this matrix to a dataframe I can use dplyr with
+pred_df <- as.data.frame(predictions)
+pred_df$Sepal.Length <- x_seq
+pred_df$SampleID <- 1:nrow(pred_df)
+
+fan_bands <- pred_df %>% 
+  pivot_longer(
+    col = -c(Sepal.Length, SampleID),
+    names_to = "Boot_sample",
+    values_to = "Prediction"
+  ) %>%
+  group_by(Sepal.Length) %>%
+  summarise(
+    #referring to lecture notes for fancharts, page 16
+    lower_50 = quantile(Prediction, 0.25),
+    upper_50 = quantile(Prediction, 0.75),
+    lower_80 = quantile(Prediction, 0.10),
+    upper_80 = quantile(Prediction, 0.90),
+    lower_95 = quantile(Prediction, 0.025),
+    upper_95 = quantile(Prediction, 0.975),
+    mean     = mean(Prediction),
+    .groups = "drop"
+)
+
+```
+
+
+```{r part 1 charts}
+#| fig-width: 15
+#| fig-height: 8
+
+# Two different uncertainty encodings chunk
+# Fan and density. 
+
+#This fan chart shows the uncertainty in predicting petal length based on sepal length, dervied from the variability of the slope coefficient from 1000 bootstrapped models
+
+Fan <- ggplot(fan_bands, aes(Sepal.Length)) +
+  geom_ribbon(aes(ymin = lower_95, ymax = upper_95, fill = "95% Interval"), alpha = 0.15) +
+  geom_ribbon(aes(ymin = lower_80, ymax = upper_80, fill = "80% Interval"), alpha = 0.25) +
+  geom_ribbon(aes(ymin = lower_50, ymax = upper_50, fill = "50% Interval"), alpha = 0.4) +
+  geom_line(aes(y = mean, color = "Mean Slope"), linewidth = 1) +
+  scale_fill_manual(
+    name = "Confidence Intervals",
+    values = c("95% Interval" = "darkgreen", 
+               "80% Interval" = "darkgreen", 
+               "50% Interval" = "darkgreen")
+  ) + 
+  scale_color_manual(
+    name = "Estimates",
+    values = c("Mean Slope" = "darkgreen")
+  ) +
+  labs(
+    title = "Uncertainty in Petal length prediction using Sepal Length",
+    subtitle = "Derived from the variability of the slopes from 1000 bootstraped models",
+    x = "Sepal Length", 
+    y = "Predicted Petal Length") +
+  theme_minimal() +
+  theme(legend.position = "top",
+        plot.title = element_text(size = 17),
+        plot.subtitle = element_text(size = 13),
+        axis.title.y = element_text(size = 13),
+        axis.title.x = element_text(size = 13))
+
+#density chart
+density <- ggplot(boot_df, aes(x = slope)) +
+  geom_density(fill = "#005000", alpha = 0.3) +
+  geom_vline(xintercept = coef(fit)["Sepal.Length"], linetype = "dashed") +
+  labs(title = "Bootstrap distribution of the slope estimate\n for Petal Length ~ Sepal Length",
+       subtitle = "Dotted line is 'true' slope value",
+       x = "Slope estimate") +
+  theme_minimal() +
+  theme(
+      plot.title = element_text(size = 17),
+      plot.subtitle = element_text(size = 13),
+      axis.title.y = element_text(size = 13),
+      axis.title.x = element_text(size = 13))
+
+Fan | density
+```
+
+
+## Part B: reading a Bayesian plot
+```{r, echo = T, warning=FALSE}
+#| fig-align: center
+#| fig-width: 7
+library(ggdist)
+library(ggplot2)
+
+# Worked example: Beta(2,2) prior updated with 7 successes out of 10 trials
+# The posterior is a Beta(2 + 7, 2 + 3) = Beta(9, 5) distribution. 
+# This is provided for you, no modelling required.
+set.seed(2026)
+posterior_draws <- rbeta(10000, 9, 5)
+
+data.frame(value = posterior_draws) |>
+  ggplot(aes(x = value)) +
+  stat_dotsinterval(quantiles = 50, fill = "darkorange",
+                     point_interval = "mean_qi") +
+  scale_y_continuous(NULL, breaks = NULL) +
+  labs(title = "Posterior distribution of a shooter success rates",
+       subtitle = "50 dots, each an equally-likely draw from the posterior",
+       x = "Free-thrown success rate") +
+  theme_minimal()
+```
+
+## Written commentary
+
+### What each of my Part A encoding communicate that the other does not
+The fan plot show uncertainty in prediction from variability in the slope given the bootstrap process. Uncertain slope, uncertain prediction.
+While the density shows the uncertainty/variability around the slope's value as drawn from the bootstrap process.
+
+### Part A plot(s) I would you show to (a) a technical audience familiar with the model, and (b) to a general audience? And why?
+I'd show the fan plot to a technical audience because to understand it you need to be familiar with confidence intervls. I would show the density plot to a general audience as it shows only the distribution of the slope estimate, which is easier to communicate. 
+
+
+### What each dot represents in the quantile-dotplot in Part B compared to the one of the bootstrap example in the lecture of Week 6
+In this graph, each dot is an equally likely chunk of the posterior distribution's total probability mass. Representing about 2% each (or 200 draws, 10,000/50). The dot position is the expected possible outcome drawn from the posterior distribution. Which is the predicted success rate for a free throw.  
+In contrast, the lecture's plot's represent an equally likely piece of the bootstrap distribution of the mean for tooth length. Not the true mean.
+
+
+### Interpretation of a credible interval (and difference to a confidence interval)
+The credible interval comes from the posterior distribution, and it says that there is a 95% probability that the true parameter value lies within the specific interval. Given the data from the prior.  
+Confidence intervals refer to long-run frequency. 95% CI means over the long run, 95% of the calculated intervals will contain the true, fixed parameter.  
+The difference is that the credible interval bounds are fixed once calculated while the confidence interval bounds are random and the parameter is fixed (even if unknown). 
